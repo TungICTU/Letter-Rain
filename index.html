@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Letter Rain — Optimized (Adjacency + Glyph Cache + Single Fade) + Levels + Particles — Shift-Drag + Hints</title>
+  <title>Letter Rain — Optimized (Adjacency + Glyph Cache + Single Fade) + Levels + Particles — Shift-Drag + Hints + Combo</title>
   <!-- Matter.js -->
   <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
   <style>
@@ -18,8 +18,8 @@
   html,body{ height:100%; margin:0; background:linear-gradient(180deg,#021024 0%,#071226 100%); color:#e6f6ff; display:flex; align-items:center; justify-content:center; }
   .game-shell{ width:940px; max-width:96vw; display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; }
   .panel{ background:var(--card); padding:18px; border-radius:12px; box-shadow:0 10px 40px rgba(4,9,20,0.6); border:1px solid rgba(255,255,255,0.03); }
-  .left{ display:flex; align-items:center; justify-content:center; position:relative; padding:18px; }
-  #play-wrap{ width:580px; height:720px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; }
+  .left{ display:flex; align-items:center; justify-content:center; position:relative; padding:18px; flex-direction:column; }
+  #play-wrap{ width:580px; height:660px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; }
   canvas { width:100%; height:100%; display:block; touch-action:none; }
   .hint{ position:absolute; left:12px; top:12px; font-size:13px; color:var(--muted); z-index:6; }
   .right{ width:320px; }
@@ -37,6 +37,14 @@
   .level-bar{ margin-top:8px; width:100%; height:12px; background:rgba(255,255,255,0.04); border-radius:8px; overflow:hidden; }
   .level-bar-inner{ height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent-2)); border-radius:8px; transition:width 300ms ease; }
   .level-text{ font-size:13px; color:var(--muted); }
+
+  /* Combo UI - positioned below the play area and non-interactive so it won't block canvas */
+  .combo-wrap{ margin-top:12px; width:100%; pointer-events:none; }
+  .combo-row{ display:flex; align-items:center; gap:8px; }
+  .combo-text{ font-weight:700; color:#ffd27a; font-size:13px; width:110px; pointer-events:none; }
+  .combo-bar{ flex:1; height:10px; background:rgba(255,255,255,0.03); border-radius:8px; overflow:hidden; }
+  .combo-bar-inner{ height:100%; width:0%; background:linear-gradient(90deg,#ffd27a,#ffb86b); transition:width 120ms linear; pointer-events:none; }
+
   @media (max-width:980px){ .game-shell{ grid-template-columns:1fr; } .right{ width:100%; } }
   </style>
 </head>
@@ -45,6 +53,14 @@
     <div class="panel left">
       <div id="play-wrap" aria-label="game area">
         <canvas id="gameCanvas"></canvas>
+      </div>
+
+      <!-- combo bar placed below the play-wrap (non-interactive so it won't block gameplay) -->
+      <div class="combo-wrap" id="comboWrap" style="display:none;" aria-hidden="true">
+        <div class="combo-row">
+          <div class="combo-text" id="comboText">Combo x0</div>
+          <div class="combo-bar" aria-hidden="true"><div id="comboBarInner" class="combo-bar-inner"></div></div>
+        </div>
       </div>
     </div>
 
@@ -98,6 +114,7 @@
  <script>
 /* Optimized Letter Rain + Leveling System + Particles + SHIFT-DRAG ordered selection
    + HINT SYSTEM (PREFERS LONGER WORDS)
+   + COMBO SYSTEM (NEW)
 */
 /* ---------------------- CONFIG ---------------------- */
 const CONFIG = {
@@ -126,6 +143,13 @@ const CONFIG = {
   hintMaxNodes: 20000,
   hintSearchMillisPerMode: 300, // ms per search pass
   hintHighlightMs: 4200,
+  // COMBO config
+  comboStartThreshold: 3, // matches required to start giving combo bonus
+  comboBonuses: [0,0,0,10,20,30,40], // index by streak count (0..6), 7+ -> 50
+  comboMaxBonusFrom7: 50,
+  comboDurationAt3: 30, // seconds at 3rd
+  comboDurationDecreasePerLevel: 5, // each level up
+  comboDurationMin: 10, // minimum seconds from 7th
 };
 
 /* ---------------------- DICTIONARY (array kept only temporarily for build) ---------------------- */
@@ -154,6 +178,11 @@ const recentWordsEl = document.getElementById('recentWords');
 const levelNumEl = document.getElementById('levelNum');
 const levelProgressTextEl = document.getElementById('levelProgressText');
 const levelBarInnerEl = document.getElementById('levelBarInner');
+
+// combo UI
+const comboWrap = document.getElementById('comboWrap');
+const comboTextEl = document.getElementById('comboText');
+const comboBarInnerEl = document.getElementById('comboBarInner');
 
 let engine, world, render, runner;
 let running = false;
@@ -562,7 +591,7 @@ function endDraggingBody(){
   dragging.body = null; dragging.lastPos = null;
 }
 
-/* Selection helpers */
+/* ---------------------- Selection helpers ---------------------- */
 function startSelection(firstBody){
   selectionActive = true;
   selection.bodies = [];
@@ -660,6 +689,10 @@ function fadeAndRemoveBodies(bodies, word){
     for (const b of group){ if (!b) continue; cx += b.position.x; cy += b.position.y; spawnExplosion(b.position.x, b.position.y, 6, '#fff'); }
     cx /= group.length; cy /= group.length;
     showFloatingStatus(`${word.toUpperCase()} +${points}`, cx, cy, { color: '#e6f6ff', size: 18, duration: 1200 });
+
+    // --- COMBO HANDLING: increment streak and apply combo bonus if applicable ---
+    handleComboOnMatch(false);
+
     for (const b of group){ b.isRemoved = true; clearEdgesForBody(b); }
     checkLevelProgress();
     const start = performance.now();
@@ -675,6 +708,102 @@ function fadeAndRemoveBodies(bodies, word){
     }
     requestAnimationFrame(tick);
   });
+}
+
+/* ---------------------- COMBO SYSTEM ---------------------- */
+let comboStreak = 0; // consecutive word matches without hint
+let comboExpiresAt = 0; // timestamp in ms when combo expires
+let comboTimerIv = null;
+
+function getComboBonusForStreak(n){
+  if (n < CONFIG.comboStartThreshold) return 0;
+  if (n < CONFIG.comboBonuses.length) return CONFIG.comboBonuses[n];
+  return CONFIG.comboMaxBonusFrom7;
+}
+function getComboDurationForStreak(n){
+  if (n < CONFIG.comboStartThreshold) return 0;
+  // 3 => base (comboDurationAt3), 4 => -decrease, etc
+  const levelIndex = n - CONFIG.comboStartThreshold; // 0 for 3rd
+  const dur = CONFIG.comboDurationAt3 - (levelIndex * CONFIG.comboDurationDecreasePerLevel);
+  return Math.max(CONFIG.comboDurationMin, dur);
+}
+
+function startComboTimer(){
+  if (comboTimerIv) clearInterval(comboTimerIv);
+  comboTimerIv = setInterval(()=>{
+    updateComboBar();
+    if (comboExpiresAt && performance.now() >= comboExpiresAt){
+      // combo expired
+      showFloatingStatus('Combo expired', render.options.width/2, 60, { color:'#ff7b7b', size:14, duration:900 });
+      resetCombo();
+    }
+  }, 120);
+}
+function stopComboTimer(){ if (comboTimerIv) { clearInterval(comboTimerIv); comboTimerIv = null; } }
+
+function updateComboBar(){
+  if (!comboExpiresAt){ comboWrap.style.display = 'none'; comboBarInnerEl.style.width = '0%'; comboTextEl.textContent = 'Combo x0'; return; }
+  const remaining = Math.max(0, comboExpiresAt - performance.now());
+  const dur = getComboDurationForStreak(comboStreak) * 1000;
+  if (dur <= 0){ comboWrap.style.display = 'none'; comboBarInnerEl.style.width = '0%'; return; }
+  const pct = clamp((remaining / dur) * 100, 0, 100);
+  comboWrap.style.display = 'block';
+  comboBarInnerEl.style.width = `${pct}%`;
+  comboTextEl.textContent = `Combo x${comboStreak}`;
+}
+
+function resetCombo(reason){
+  comboStreak = 0;
+  comboExpiresAt = 0;
+  stopComboTimer();
+  updateComboBar();
+}
+
+function handleComboOnMatch(wasHintUsed){
+  // If a hint was used recently, reset the combo streak
+  if (wasHintUsed){ resetCombo('hint'); return; }
+  comboStreak += 1;
+  // Only apply bonus from the threshold
+  const bonus = getComboBonusForStreak(comboStreak);
+  if (bonus > 0){
+    // apply combo bonus to both total score and progression score
+    score += bonus;
+    progressScore += bonus;
+    scoreEl.textContent = score;
+    updateLevelUI();
+    // show floating and play particles
+    showFloatingStatus(`Combo +${bonus}`, render.options.width/2, 80, { color: '#ffd27a', size: 16, duration: 1000 });
+    spawnExplosion(render.options.width/2, 80, 12, '#ffd27a');
+    // reset combo timer to the duration for this streak
+    const durSec = getComboDurationForStreak(comboStreak);
+    comboExpiresAt = performance.now() + durSec * 1000;
+    startComboTimer();
+    updateComboBar();
+  } else {
+    // below threshold: still increment streak but do not start timer yet
+    // if streak reached the threshold exactly, start timer and award
+    if (comboStreak === CONFIG.comboStartThreshold){
+      const bonus2 = getComboBonusForStreak(comboStreak);
+      if (bonus2 > 0){
+        score += bonus2;
+        progressScore += bonus2;
+        scoreEl.textContent = score;
+        updateLevelUI();
+        showFloatingStatus(`Combo +${bonus2}`, render.options.width/2, 80, { color: '#ffd27a', size: 16, duration: 1000 });
+        spawnExplosion(render.options.width/2, 80, 12, '#ffd27a');
+      }
+      const durSec = getComboDurationForStreak(comboStreak);
+      comboExpiresAt = performance.now() + durSec * 1000;
+      startComboTimer();
+      updateComboBar();
+    }
+  }
+}
+
+/* When player requests a hint, that should break combos */
+function breakComboDueToHint(){
+  if (comboStreak > 0) showFloatingStatus('Combo broken (hint)', render.options.width/2, 60, { color:'#ff7b7b', size:14, duration:900 });
+  resetCombo('hint');
 }
 
 /* ---------------------- LEVEL / PROGRESSION ---------------------- */
@@ -826,7 +955,7 @@ async function findAnyWordFromBoard(){
 }
 
 async function findHintCandidate(){
-  await dictLoadedPromise;
+  await dictLoadedPromise; // ensure dictionary available
   const connected = await findConnectedWordHint();
   if (connected && connected.length) return connected;
   const any = await findAnyWordFromBoard();
@@ -840,8 +969,11 @@ function applyHintToBodies(bodies){
   setTimeout(()=>{ for (const b of bodies){ if (b) b.__hint = false; } }, CONFIG.hintHighlightMs);
 }
 
+/* Public: call when player asks for hint (or when the game wants to auto-check) */
 async function provideHint(){
   if (!running) return;
+  // Using a hint breaks the combo streak immediately
+  breakComboDueToHint();
   const candidate = await findHintCandidate();
   if (candidate){
     applyHintToBodies(candidate);
@@ -849,12 +981,14 @@ async function provideHint(){
     showFloatingStatus(`Hint: ${word}`, render.options.width/2, 60, { color: '#ffd27a', size: 14, duration: 1200 });
     return true;
   } else {
+    // no possible word from board -> game over
     showFloatingStatus('No possible words — ending game', render.options.width/2, 60, { color: '#ff7b7b', size: 14, duration: 1400 });
     endGame();
     return false;
   }
 }
 
+// Evaluate whether ANY word is possible (used by game over check)
 async function hasAnyPlayableWord(){
   const candidate = await findHintCandidate();
   return !!candidate;
@@ -862,20 +996,25 @@ async function hasAnyPlayableWord(){
 
 /* ---------------------- GAMEOVER CHECK ---------------------- */
 function checkGameOverCondition(){
+  // old condition: letter fell off top
   const bodies = getLetterBodies();
   for (const b of bodies){ const radius = (b.circleRadius || CONFIG.letterSize/2); if (b.position.y - radius < -5) return true; }
+  // synchronous check doesn't decide game over; async check will call endGame when needed
   return false;
 }
 
+// We'll run periodic asynchronous checks (every 2s) to detect impossible boards
 let asyncGameCheckIv = null;
 function startAsyncGameChecks(){
   if (asyncGameCheckIv) clearInterval(asyncGameCheckIv);
   asyncGameCheckIv = setInterval(async ()=>{
     if (!running) return;
+    // If there are very few letters, skip expensive check
     const bodies = getLetterBodies();
     if (!bodies.length) return;
     const possible = await hasAnyPlayableWord();
     if (!possible){
+      // end game
       showFloatingStatus('No playable words found — Game Over', render.options.width/2, 60, { color: '#ff7b7b', size: 14, duration: 1600 });
       endGame();
     }
@@ -924,6 +1063,8 @@ function startGame(){
   if (elapsedTimer) clearInterval(elapsedTimer);
   elapsedTimer = setInterval(updateTimer, 500);
   startAsyncGameChecks();
+  // reset combos on new game
+  resetCombo('newgame');
 }
 function resetWorldForNewGame(){
   if (!world) return;
@@ -1000,7 +1141,7 @@ function dictIsPrefixAsync(pref){
 }
 
 /* init */
-function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); }
+function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); resetCombo('init'); }
 init();
 </script>
 </body>
