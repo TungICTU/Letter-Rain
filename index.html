@@ -94,7 +94,12 @@
 
   /* small polish for readability of recent words list */
   .words-list p{ margin:6px 0; line-height:1.2; }
-  </style>
+  
+/* Mobile drag-friendly selection rules: disable selection for UI but allow canvas to receive drag/pointer events */
+#play-wrap, #play-wrap * { -webkit-touch-callout: none; -webkit-user-drag: none; }
+#play-wrap *:not(canvas) { user-select: none !important; -webkit-user-select: none !important; -moz-user-select: none !important; -ms-user-select: none !important; }
+canvas { user-select: auto !important; -webkit-user-select: auto !important; -moz-user-select: auto !important; -ms-user-select: auto !important; -webkit-user-drag: none; touch-action: none; }
+</style>
 </head>
 <body>
   <!-- Mobile overlay (for off-canvas right panel) -->
