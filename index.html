@@ -16,10 +16,11 @@
     font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   }
   html,body{ height:100%; margin:0; background:linear-gradient(180deg,#021024 0%,#071226 100%); color:#e6f6ff; display:flex; align-items:center; justify-content:center; }
-  .game-shell{ width:940px; max-width:96vw; display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; }
+  /* Game shell: two columns on desktop, stacked on mobile */
+  .game-shell{ width:940px; max-width:96vw; display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; transition:all .24s ease; }
   .panel{ background:var(--card); padding:18px; border-radius:12px; box-shadow:0 10px 40px rgba(4,9,20,0.6); border:1px solid rgba(255,255,255,0.03); }
-  .left{ display:flex; align-items:center; justify-content:center; position:relative; padding:12px; flex-direction:column; }
-  #play-wrap{ width:580px; height:660px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; }
+  .left{ display:flex; align-items:center; justify-content:center; position:relative; padding:18px; flex-direction:column; }
+  #play-wrap{ width:580px; height:660px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; touch-action:none; -webkit-tap-highlight-color: transparent; }
   canvas { width:100%; height:100%; display:block; touch-action:none; }
   .hint{ position:absolute; left:12px; top:12px; font-size:13px; color:var(--muted); z-index:6; }
   .right{ width:320px; }
@@ -31,7 +32,7 @@
   button.btn{ background:linear-gradient(180deg,var(--accent),var(--accent-2)); border:none; padding:10px 14px; border-radius:10px; font-weight:700; cursor:pointer; color:#013; }
   button.ghost{ background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.04); padding:10px 12px; border-radius:10px; cursor:pointer; }
   .ghost.active{ background: linear-gradient(180deg, rgba(125,211,252,0.12), rgba(96,165,250,0.08)); border: 1px solid rgba(125,211,252,0.12); color: #7dd3fc; }
-  .words-list{ margin-top:16px; max-height:220px; overflow:auto; padding-right:8px; }
+  .words-list{ margin-top:16px; max-height:280px; overflow:auto; padding-right:8px; }
   footer.note{ margin-top:12px; font-size:12px; color:var(--muted); }
   .level-wrap{ margin-top:12px; }
   .level-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
@@ -40,55 +41,96 @@
   .level-text{ font-size:13px; color:var(--muted); }
 
   /* Combo UI - positioned below the play area and non-interactive so it won't block canvas */
-  .combo-wrap{ margin-top:8px; width:100%; pointer-events:none; }
+  .combo-wrap{ margin-top:12px; width:100%; pointer-events:none; }
   .combo-row{ display:flex; align-items:center; gap:8px; }
   .combo-text{ font-weight:700; color:#ffd27a; font-size:13px; width:110px; pointer-events:none; }
   .combo-bar{ flex:1; height:10px; background:rgba(255,255,255,0.03); border-radius:8px; overflow:hidden; }
   .combo-bar-inner{ height:100%; width:0%; background:linear-gradient(90deg,#ffd27a,#ffb86b); transition:width 120ms linear; pointer-events:none; }
 
-  /* hud toggle (for very small screens) */
-  #hudToggle{ position:absolute; top:10px; right:10px; z-index:12; display:none; }
-
   /* Mobile-friendly tweaks */
   @media (max-width:980px){
-    .game-shell{ grid-template-columns:1fr; gap:12px; padding:12px; }
-    .right{ width:100%; }
-    #play-wrap{ width:100%; height:56vh; min-height:320px; }
+    .game-shell{ grid-template-columns:1fr; gap:12px; padding:12px; width:100%; max-width:100vw; }
+    .right{ width:88vw; max-width:420px; position:fixed; right:12px; top:88px; bottom:12px; transform:translateY(20px) translateX(120%); transition:transform .28s cubic-bezier(.2,.9,.2,1); z-index:9998; box-shadow:0 20px 60px rgba(2,6,23,0.8); display:block; }
+    .right.open{ transform: translateX(0) translateY(0); }
+    /* overlay that will dim when panel open */
+    .mobile-overlay{ position:fixed; left:0; right:0; top:0; bottom:0; background:rgba(0,0,0,0.36); z-index:9997; display:none; }
+    .mobile-overlay.show{ display:block; }
+
+    #play-wrap{ width:100%; height:62vh; min-height:420px; border-radius:14px; padding:6px; }
     .controls{ flex-wrap:wrap; gap:8px; }
     .controls button{ flex:1 1 48%; min-width:120px; }
-    button.btn{ padding:10px 12px; font-size:15px; border-radius:10px; }
-    button.ghost{ padding:10px 12px; font-size:14px; border-radius:10px; }
-    .muted{ font-size:13px; }
+    button.btn{ padding:12px 16px; font-size:16px; border-radius:12px; }
+    button.ghost{ padding:12px 16px; font-size:15px; border-radius:12px; }
+    .muted{ font-size:14px; }
     .level-text{ font-size:13px; }
-    .words-list{ max-height:140px; }
+    .words-list{ max-height:180px; }
     footer.note{ font-size:13px; }
     /* move combo UI slightly larger for touch readability */
     .combo-text{ font-size:14px; }
     .combo-bar{ height:12px; }
-    /* collapse right panel by default on narrow screens */
-    .right.collapsed{ display:none; }
-    #hudToggle{ display:block; }
-  }
 
-  /* Very small (phone portrait) - further compaction */
-  @media (max-width:520px){
-    #play-wrap{ height:50vh; min-height:300px; }
-    .big{ font-size:24px; }
-    .level-bar{ height:10px; }
-    .combo-text{ width:90px; font-size:13px; }
+    /* Mobile-specific UI container */
+    .mobile-ui{ display:block; width:100%; margin-bottom:10px; }
+    .mobile-toprow{ display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; }
+    .mobile-top-card{ background:linear-gradient(180deg, rgba(2,6,23,0.72), rgba(2,6,23,0.6)); padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); display:flex; gap:8px; align-items:center; min-width:60px; }
+    .mobile-top-left{ display:flex; gap:8px; align-items:center; }
+    .mobile-mid{ margin-bottom:8px; }
+    .mobile-level-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .mobile-progress{ margin-top:6px; }
+    .mobile-stats{ display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; }
+
+    /* Floating HUD hidden when mobile-ui is shown */
+    #floatingHud{ display:none !important; }
+
+    /* Floating HUD on mobile removed in favor of mobile-ui */
+    .hud-card{ display:none; }
+    .sidebar-toggle{ display:block; position:fixed; right:12px; top:12px; z-index:10000; border-radius:10px; padding:10px 12px; border:none; background:linear-gradient(180deg,var(--accent),var(--accent-2)); color:#013; font-weight:700; box-shadow:0 8px 30px rgba(2,6,23,0.6); }
   }
 
   /* Larger devices: increase hit target slightly */
   @media (min-width:981px){
     button.btn{ padding:12px 16px; }
   }
+
+  /* small polish for readability of recent words list */
+  .words-list p{ margin:6px 0; line-height:1.2; }
   </style>
 </head>
 <body>
-  <div class="game-shell">
+  <!-- Mobile overlay (for off-canvas right panel) -->
+  <div id="mobileOverlay" class="mobile-overlay" tabindex="-1" aria-hidden="true"></div>
+
+  <!-- Sidebar toggle button (mobile) -->
+  <button id="sidebarToggle" class="sidebar-toggle" style="display:none;">Menu</button>
+
+  <div class="game-shell" id="gameShell">
     <div class="panel left">
+      <!-- MOBILE UI: visible only on small screens -->
+      <div class="mobile-ui" id="mobileUI" style="display:none;">
+        <div class="mobile-toprow">
+          <div class="mobile-top-left">
+            <div class="mobile-top-card"><div style="font-size:12px;color:var(--muted);">Score</div><div id="hudScore" style="font-weight:700;margin-left:6px;">0</div></div>
+            <div class="mobile-top-card"><div style="font-size:12px;color:var(--muted);">Time</div><div id="hudTimer" style="font-weight:700;margin-left:6px;">00:00</div></div>
+          </div>
+          <!-- menu button uses existing sidebarToggle for consistency -->
+          <div><button id="mobileMenuBtn" class="ghost" style="padding:8px 10px;">Menu</button></div>
+        </div>
+
+        <div class="mobile-mid">
+          <div class="mobile-level-row">
+            <div style="font-weight:700">Level <span id="mobileLevelNum">1</span></div>
+            <div class="level-text" id="mobileLevelProgressText">Progress: 0/100</div>
+          </div>
+          <div class="level-bar mobile-progress" aria-hidden="true"><div id="mobileLevelBarInner" class="level-bar-inner"></div></div>
+        </div>
+
+        <div class="mobile-stats">
+          <div style="min-width:40%;" class="mobile-top-card"><div style="font-size:12px;color:var(--muted);">Words</div><div id="mobileWordsCount" style="font-weight:700;margin-left:6px;">0</div></div>
+          <div style="min-width:40%;" class="mobile-top-card"><div style="font-size:12px;color:var(--muted);">Letters</div><div id="mobileLettersCount" style="font-weight:700;margin-left:6px;">0</div></div>
+        </div>
+      </div>
+
       <div id="play-wrap" aria-label="game area">
-        <button id="hudToggle" class="ghost">Show HUD</button>
         <canvas id="gameCanvas"></canvas>
       </div>
 
@@ -99,9 +141,20 @@
           <div class="combo-bar" aria-hidden="true"><div id="comboBarInner" class="combo-bar-inner"></div></div>
         </div>
       </div>
+
+      <!-- MOBILE BUTTONS (duplicates that call same actions) -->
+      <div id="mobileButtons" style="display:none;margin-top:10px;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="mobileStartBtn" class="btn">Start</button>
+          <button id="mobilePauseBtn" class="ghost">Pause</button>
+          <button id="mobileHintBtn" class="ghost">Hint</button>
+          <button id="mobileConnectToggle" class="ghost" aria-pressed="false">Connect Mode</button>
+        </div>
+      </div>
+
     </div>
 
-     <div class="panel right" id="rightPanel">
+     <div class="panel right" id="rightPanel" role="region" aria-label="Game controls">
       <h1>Letter Rain — Connected Touch Anagrams (Mobile Friendly)</h1>
       <div class="muted" id="controlsNote">Hold <strong>Shift</strong> + left-click and drag to connect letters <em>in order</em> (letters must touch). Release to submit the sequence as a word.</div>
 
@@ -151,9 +204,17 @@
     </div>
   </div>
  <script>
+/* Mobile-friendly additions:
+   - Auto-enable Connect Mode on touch / small screens
+   - Hide the Connect toggle when auto-enabled
+   - Show a one-time mobile hint overlay
+   - Slightly increase touch hit targets via CSS (above)
+   - Mobile UI elements that duplicate key stats and buttons (wired to same logic)
+*/
+
 /* ---------------------- CONFIG ---------------------- */
 const CONFIG = {
-  letterSpawnInterval: 50,
+  letterSpawnInterval: 50, // not used for continuous spawning anymore
   maxLetters: 30,
   initialFillCount: 30,
   fillBurstInterval: 22,
@@ -176,41 +237,16 @@ const CONFIG = {
   // HINT config
   hintMaxDepth: 8,
   hintMaxNodes: 20000,
-  hintSearchMillisPerMode: 300,
+  hintSearchMillisPerMode: 300, // ms per search pass
   hintHighlightMs: 4200,
   // COMBO config
-  comboStartThreshold: 3,
-  comboBonuses: [0,0,0,10,20,30,40],
+  comboStartThreshold: 3, // matches required to start giving combo bonus
+  comboBonuses: [0,0,0,10,20,30,40], // index by streak count (0..6), 7+ -> 50
   comboMaxBonusFrom7: 50,
-  comboDurationAt3: 30,
-  comboDurationDecreasePerLevel: 5,
-  comboDurationMin: 10,
+  comboDurationAt3: 30, // seconds at 3rd
+  comboDurationDecreasePerLevel: 5, // each level up
+  comboDurationMin: 10, // minimum seconds from 7th
 };
-
-/* ---------------------- ADAPT FOR DEVICE (responsive tweaks) ---------------------- */
-function adaptConfigForDevice(){
-  const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || window.matchMedia('(pointer:coarse)').matches;
-  const w = window.innerWidth || document.documentElement.clientWidth;
-  // smaller letter size and fewer letters for phones
-  if (isTouch || w < 720){
-    CONFIG.letterSize = Math.max(40, Math.round(Math.min(60, w * 0.09)) ); // scale with width but clamp
-    CONFIG.maxLetters = 20;
-    CONFIG.initialFillCount = 20;
-    CONFIG.fillBurstInterval = 28;
-    CONFIG.maxParticles = 220;
-    CONFIG.hintSearchMillisPerMode = 220;
-    longPressThreshold = 240;
-  } else {
-    // desktop defaults
-    CONFIG.letterSize = 60;
-    CONFIG.maxLetters = 30;
-    CONFIG.initialFillCount = 30;
-    CONFIG.fillBurstInterval = 22;
-    CONFIG.maxParticles = 600;
-    CONFIG.hintSearchMillisPerMode = 300;
-    longPressThreshold = 280;
-  }
-}
 
 /* ---------------------- DICTIONARY (array kept only temporarily for build) ---------------------- */
 const DICTIONARY_ARRAY = [ ];
@@ -218,7 +254,7 @@ const DICTIONARY_ARRAY = [ ];
 /* ---------------------- TRIE (memory-friendly) ---------------------- */
 class TrieNode { constructor(){ this.children = Object.create(null); this.isWord = false; } }
 class Trie { constructor(){ this.root = new TrieNode(); } insert(word){ let node = this.root; for (let i=0;i<word.length;i++){ const ch = word[i]; if (!node.children[ch]) node.children[ch] = new TrieNode(); node = node.children[ch]; } node.isWord = true; } contains(word){ let node = this.root; for (let i=0;i<word.length;i++){ const ch = word[i]; node = node.children[ch]; if (!node) return false; } return !!node.isWord; } isPrefix(pref){ let node = this.root; for (let i=0;i<pref.length;i++){ const ch = pref[i]; node = node.children[ch]; if (!node) return false; } return true; } }
-const trie = new Trie();
+const trie = new Trie(); (function buildTrieFromArray(){ if (Array.isArray(DICTIONARY_ARRAY) && DICTIONARY_ARRAY.length){ for (let i = 0; i < DICTIONARY_ARRAY.length; i++){ trie.insert(String(DICTIONARY_ARRAY[i]).toLowerCase()); } try { DICTIONARY_ARRAY.length = 0; } catch(e){} } })();
 
 /* ---------------------- UTIL ---------------------- */
 const randInt = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
@@ -238,20 +274,42 @@ const recentWordsEl = document.getElementById('recentWords');
 const levelNumEl = document.getElementById('levelNum');
 const levelProgressTextEl = document.getElementById('levelProgressText');
 const levelBarInnerEl = document.getElementById('levelBarInner');
-const rightPanel = document.getElementById('rightPanel');
 
 // combo UI
 const comboWrap = document.getElementById('comboWrap');
 const comboTextEl = document.getElementById('comboText');
 const comboBarInnerEl = document.getElementById('comboBarInner');
-const hudToggle = document.getElementById('hudToggle');
+
+const rightPanel = document.getElementById('rightPanel');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const mobileOverlay = document.getElementById('mobileOverlay');
+
+// floating/mobile HUD elements
+const hudScore = document.getElementById('hudScore');
+const hudTimer = document.getElementById('hudTimer');
+const hudLevel = document.getElementById('hudLevel');
+const mobileUI = document.getElementById('mobileUI');
+const mobileLevelNum = document.getElementById('mobileLevelNum');
+const mobileLevelProgressText = document.getElementById('mobileLevelProgressText');
+const mobileLevelBarInner = document.getElementById('mobileLevelBarInner');
+const mobileWordsCount = document.getElementById('mobileWordsCount');
+const mobileLettersCount = document.getElementById('mobileLettersCount');
+const mobileButtons = document.getElementById('mobileButtons');
+
+const mobileStartBtn = document.getElementById('mobileStartBtn');
+const mobilePauseBtn = document.getElementById('mobilePauseBtn');
+const mobileHintBtn = document.getElementById('mobileHintBtn');
+const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+const mobileConnectToggle = document.getElementById('mobileConnectToggle');
 
 // ----------------- CONNECT MODE (pinned + transient Shift) -----------------
+// Replaces the old single `connectMode` boolean with pinned + transient states.
 const connectToggle = document.getElementById('connectToggle');
 let pinnedConnectMode = false;      // toggled by the Connect button
 let transientConnectMode = false;   // temporarily true while Shift is held
 
 function effectiveConnectModeForEvent(evt){
+  // Use pinned OR transient OR event.shiftKey (useful when key events might not fire for the pointer's context)
   return pinnedConnectMode || transientConnectMode || (!!(evt && evt.shiftKey));
 }
 function effectiveConnectMode(){
@@ -260,16 +318,38 @@ function effectiveConnectMode(){
 function updateConnectToggleUI(){
   const active = effectiveConnectMode();
   connectToggle.classList.toggle('active', active);
+  mobileConnectToggle && mobileConnectToggle.classList.toggle('active', active);
+  // aria-pressed represents the pinned state (true if pinned on)
   connectToggle.setAttribute('aria-pressed', String(pinnedConnectMode));
+  if (mobileConnectToggle) mobileConnectToggle.setAttribute('aria-pressed', String(pinnedConnectMode));
   connectToggle.textContent = active ? 'Connect: On' : 'Connect Mode';
+  if (mobileConnectToggle) mobileConnectToggle.textContent = active ? 'Connect: On' : 'Connect Mode';
 }
 function togglePinnedConnectMode(){
   pinnedConnectMode = !pinnedConnectMode;
   updateConnectToggleUI();
 }
-connectToggle.addEventListener('click', (ev) => { togglePinnedConnectMode(); });
-window.addEventListener('keydown', (ev) => { if (ev.key === 'Shift' && !transientConnectMode){ transientConnectMode = true; updateConnectToggleUI(); } });
-window.addEventListener('keyup', (ev) => { if (ev.key === 'Shift' && transientConnectMode){ transientConnectMode = false; updateConnectToggleUI(); } });
+// button toggles pinned state
+connectToggle.addEventListener('click', (ev) => {
+  togglePinnedConnectMode();
+});
+
+// Keyboard listeners to set transientConnectMode when Shift is pressed/released.
+// This makes holding Shift behave like "temporarily enable Connect Mode".
+window.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Shift' && !transientConnectMode){
+    transientConnectMode = true;
+    updateConnectToggleUI();
+  }
+});
+window.addEventListener('keyup', (ev) => {
+  if (ev.key === 'Shift' && transientConnectMode){
+    transientConnectMode = false;
+    updateConnectToggleUI();
+  }
+});
+// wire mobile connect toggle to the same action
+if (mobileConnectToggle) mobileConnectToggle.addEventListener('click', () => { togglePinnedConnectMode(); });
 // --------------------------------------------------------------------------
 
 let engine, world, render, runner;
@@ -322,13 +402,13 @@ function createGlyph(letter){
   ctx.textBaseline = 'middle';
   ctx.fillText(letter, size/2, size/2 + 1);
   ctx.fillStyle = '#f8fdff';
-  ctx.fillText(letter, size/2, size/2);
+  ctx.fillText(letter, size/2 + 0, size/2);
   return oc;
 }
-function prepareGlyphs(){
+(function prepareGlyphs(){
   const A = 'A'.charCodeAt(0);
   for (let i=0;i<26;i++){ const ch = String.fromCharCode(A + i); glyphs[ch] = createGlyph(ch); }
-}
+})();
 
 /* Particles & Floating Status */
 const particles = [];
@@ -365,7 +445,7 @@ function initMatter(){
       height: playWrap.clientHeight,
       wireframes: false,
       background: 'transparent',
-      pixelRatio: Math.min(1.5, window.devicePixelRatio || 1),
+      pixelRatio: (window.devicePixelRatio || 1),
       showVelocity: false
     }
   });
@@ -377,13 +457,13 @@ function initMatter(){
   Matter.Events.on(engine, 'collisionStart', handleCollisions);
   Matter.Events.on(engine, 'collisionActive', handleCollisions);
   Matter.Events.on(engine, 'collisionEnd', handleCollisionEnd);
-  window.addEventListener('resize', onWindowResize);
+  window.addEventListener('resize', updateBoundaries);
 }
 
 /* Boundaries */
 let walls = [];
 function updateBoundaries(){
-  if (!playWrap) return;
+  if (!playWrap || !render) return;
   const w = playWrap.clientWidth, h = playWrap.clientHeight;
   for (const b of walls) try{ Matter.World.remove(world, b); } catch(e){}
   walls = [];
@@ -393,24 +473,20 @@ function updateBoundaries(){
   const bottom = Matter.Bodies.rectangle(w/2, h + t/2, w + t*2, t, { isStatic:true, render:{visible:false} });
   walls.push(left, right, bottom);
   Matter.World.add(world, walls);
-  render.canvas.width = w;
-  render.canvas.height = h;
+
+  // handle HiDPI canvas sizing
+  const pr = render.options.pixelRatio || 1;
   render.canvas.style.width = w + 'px';
   render.canvas.style.height = h + 'px';
+  render.canvas.width = Math.round(w * pr);
+  render.canvas.height = Math.round(h * pr);
+
+  // ensure drawing is in CSS pixels (scale context to pixel ratio)
+  const ctx = render.context;
+  ctx.setTransform(pr, 0, 0, pr, 0, 0);
+
   render.options.width = w;
   render.options.height = h;
-}
-
-function onWindowResize(){
-  // adapt config if crossing thresholds
-  const oldSize = CONFIG.letterSize;
-  adaptConfigForDevice();
-  if (CONFIG.letterSize !== oldSize){
-    // rebuild glyphs to match new size
-    for (const k in glyphs) delete glyphs[k];
-    prepareGlyphs();
-  }
-  updateBoundaries();
 }
 
 /* Collision event handlers to update adjacency */
@@ -438,7 +514,7 @@ function spawnLetter(letter){
   });
   Matter.Body.setDensity(body, 0.001 + Math.random()*0.002);
   Matter.World.add(world, body);
-  lettersOnScreen++; lettersCountEl.textContent = lettersOnScreen;
+  lettersOnScreen++; lettersCountEl.textContent = lettersOnScreen; if (mobileLettersCount) mobileLettersCount.textContent = lettersOnScreen;
   return body;
 }
 
@@ -475,7 +551,7 @@ function fillInitialLetters(){
 function drawLetters(){
   try {
     const ctx = render.context;
-    ctx.clearRect(0,0, render.options.width, render.options.height);
+    ctx.clearRect(0,0, render.canvas.width, render.canvas.height);
     const bodies = Matter.Composite.allBodies(world);
     const now = performance.now();
 
@@ -743,6 +819,7 @@ function startDraggingBody(body, p){
   dragging.body = body;
   dragging.lastPos = { x: p.x, y: p.y };
   dragging.lastTime = performance.now();
+  // Clamp initial position to ensure body starts inside bounds
   const radius = getBodyRadius(body);
   const clamped = clampPositionToPlayWrap(body.position.x, body.position.y, radius);
   Matter.Body.setPosition(body, { x: clamped.x, y: clamped.y });
@@ -762,6 +839,7 @@ function endDraggingBody(){
   const clamped = clampPositionToPlayWrap(body.position.x, body.position.y, radius);
   Matter.Body.setPosition(body, { x: clamped.x, y: clamped.y });
 
+  // If the pointer was outside the area (causing a large velocity), damp it so the body doesn't shoot out
   const maxVx = 20, maxVy = 30;
   vx = clamp(vx * 0.2, -maxVx, maxVx);
   vy = clamp(vy * 0.2, -maxVy, maxVy);
@@ -823,6 +901,14 @@ async function finalizeSelection(){
   }
 }
 
+/* ---------------------- (Existing) CLUSTER DETECTION & ANAGRAMS (left in file but not auto-run) ---------------------- */
+function getLetterBodies(){ return Matter.Composite.allBodies(world).filter(b => b.label === 'letter' && !b.isRemoved); }
+function buildLetterCounts(bodies){ const counts = {}; for (const b of bodies){ const ch = (b.letter || '').toLowerCase(); if (!ch) continue; counts[ch] = (counts[ch]||0) + 1; } return counts; }
+function canFormWordFromCounts(word, counts){ const temp = {}; for (const ch of word){ temp[ch] = (temp[ch]||0) + 1; if ((counts[ch]||0) < temp[ch]) return false; } return true; }
+function findConnectedSubsetForWord(clusterBodies, word){ return null; }
+function processClusterForAnagrams(clusterBodies){ return false; }
+function detectClustersAndRemoveWords(){ /* intentionally no-op in SHIFT-mode */ }
+
 /* ---------------------- FLASH + SINGLE FADE LOOP FOR REMOVAL ---------------------- */
 function flashPauseAndRemove(bodies, word){
   return new Promise(resolve => {
@@ -853,10 +939,11 @@ function fadeAndRemoveBodies(bodies, word){
     score += points;
     progressScore += points;
     scoreEl.textContent = score;
+    if (hudScore) hudScore.textContent = score;
     wordsMatched.unshift({ word: word.toUpperCase(), points });
     if (wordsMatched.length > 12) wordsMatched.pop();
     refreshRecentWords();
-    wordsCountEl.textContent = parseInt(wordsCountEl.textContent || '0') + 1;
+    wordsCountEl.textContent = parseInt(wordsCountEl.textContent || '0') + 1; if (mobileWordsCount) mobileWordsCount.textContent = wordsCountEl.textContent;
     let cx = 0, cy = 0;
     for (const b of group){ if (!b) continue; cx += b.position.x; cy += b.position.y; spawnExplosion(b.position.x, b.position.y, 6, '#fff'); }
     cx /= group.length; cy /= group.length;
@@ -873,7 +960,7 @@ function fadeAndRemoveBodies(bodies, word){
       const t = (performance.now() - start) / dur;
       if (t >= 1){
         for (const b of group){ try{ Matter.World.remove(world, b); } catch(e){} lettersOnScreen = Math.max(0, lettersOnScreen - 1); }
-        lettersCountEl.textContent = lettersOnScreen;
+        lettersCountEl.textContent = lettersOnScreen; if (mobileLettersCount) mobileLettersCount.textContent = lettersOnScreen;
         resolve();
         return;
       } else { for (const b of group) b.__fadeAlpha = 1 - t; requestAnimationFrame(tick); }
@@ -894,6 +981,7 @@ function getComboBonusForStreak(n){
 }
 function getComboDurationForStreak(n){
   if (n < CONFIG.comboStartThreshold) return 0;
+  // 3 => base (comboDurationAt3), 4 => -decrease, etc
   const levelIndex = n - CONFIG.comboStartThreshold; // 0 for 3rd
   const dur = CONFIG.comboDurationAt3 - (levelIndex * CONFIG.comboDurationDecreasePerLevel);
   return Math.max(CONFIG.comboDurationMin, dur);
@@ -904,6 +992,7 @@ function startComboTimer(){
   comboTimerIv = setInterval(()=>{
     updateComboBar();
     if (comboExpiresAt && performance.now() >= comboExpiresAt){
+      // combo expired
       showFloatingStatus('Combo expired', render.options.width/2, 60, { color:'#ff7b7b', size:14, duration:900 });
       resetCombo();
     }
@@ -930,27 +1019,36 @@ function resetCombo(reason){
 }
 
 function handleComboOnMatch(wasHintUsed){
+  // If a hint was used recently, reset the combo streak
   if (wasHintUsed){ resetCombo('hint'); return; }
   comboStreak += 1;
+  // Only apply bonus from the threshold
   const bonus = getComboBonusForStreak(comboStreak);
   if (bonus > 0){
+    // apply combo bonus to both total score and progression score
     score += bonus;
     progressScore += bonus;
     scoreEl.textContent = score;
+    if (hudScore) hudScore.textContent = score;
     updateLevelUI();
+    // show floating and play particles
     showFloatingStatus(`Combo +${bonus}`, render.options.width/2, 80, { color: '#ffd27a', size: 16, duration: 1400 });
     spawnExplosion(render.options.width/2, 80, 12, '#ffd27a');
+    // reset combo timer to the duration for this streak
     const durSec = getComboDurationForStreak(comboStreak);
     comboExpiresAt = performance.now() + durSec * 1000;
     startComboTimer();
     updateComboBar();
   } else {
+    // below threshold: still increment streak but do not start timer yet
+    // if streak reached the threshold exactly, start timer and award
     if (comboStreak === CONFIG.comboStartThreshold){
       const bonus2 = getComboBonusForStreak(comboStreak);
       if (bonus2 > 0){
         score += bonus2;
         progressScore += bonus2;
         scoreEl.textContent = score;
+        if (hudScore) hudScore.textContent = score;
         updateLevelUI();
         showFloatingStatus(`Combo +${bonus2}`, render.options.width/2, 80, { color: '#ffd27a', size: 16, duration: 1400 });
         spawnExplosion(render.options.width/2, 80, 12, '#ffd27a');
@@ -963,7 +1061,11 @@ function handleComboOnMatch(wasHintUsed){
   }
 }
 
-function breakComboDueToHint(){ if (comboStreak > 0) showFloatingStatus('Combo broken (hint)', render.options.width/2, 90, { color:'#ff7b7b', size:14, duration:1400 }); resetCombo('hint'); }
+/* When player requests a hint, that should break combos */
+function breakComboDueToHint(){
+  if (comboStreak > 0) showFloatingStatus('Combo broken (hint)', render.options.width/2, 90, { color:'#ff7b7b', size:14, duration:1400 });
+  resetCombo('hint');
+}
 
 /* ---------------------- LEVEL / PROGRESSION ---------------------- */
 function computeScoreNeededForLevel(lv){
@@ -972,9 +1074,40 @@ function computeScoreNeededForLevel(lv){
   const d = CONFIG.levelScoreIncrementGrowth;
   return CONFIG.levelBaseScore + (n * a) + (d * (n * (n - 1) / 2));
 }
-function checkLevelProgress(){ updateLevelUI(); const needed = computeScoreNeededForLevel(level); if (progressScore >= needed){ level += 1; progressScore = 0; applyLevelUpEffects(); updateLevelUI(); } }
-function updateLevelUI(){ levelNumEl.textContent = String(level); const needed = computeScoreNeededForLevel(level); const progress = clamp((progressScore) / Math.max(1, needed), 0, 1); levelProgressTextEl.textContent = `Progress: ${progressScore}/${needed}`; const pct = Math.round(progress * 100); levelBarInnerEl.style.width = `${pct}%`; }
-function applyLevelUpEffects(){ if (level > 1 && ((level - 1) % 2 === 0)){ CONFIG.maxLetters += 15; setTimeout(() => { showFloatingStatus(`Capacity increased to ${CONFIG.maxLetters}`, render.options.width / 2, 90, { color: '#60a5fa', size: 14, duration: 1600 }); }, 300); }
+function checkLevelProgress(){
+  updateLevelUI();
+  const needed = computeScoreNeededForLevel(level);
+  if (progressScore >= needed){
+    level += 1;
+    progressScore = 0;
+    applyLevelUpEffects();
+    updateLevelUI();
+  }
+}
+function updateLevelUI(){
+  levelNumEl.textContent = String(level);
+  if (mobileLevelNum) mobileLevelNum.textContent = String(level);
+  hudLevel && (hudLevel.textContent = String(level));
+  const needed = computeScoreNeededForLevel(level);
+  const progress = clamp((progressScore) / Math.max(1, needed), 0, 1);
+  levelProgressTextEl.textContent = `Progress: ${progressScore}/${needed}`;
+  if (mobileLevelProgressText) mobileLevelProgressText.textContent = `Progress: ${progressScore}/${needed}`;
+  const pct = Math.round(progress * 100);
+  levelBarInnerEl.style.width = `${pct}%`;
+  if (mobileLevelBarInner) mobileLevelBarInner.style.width = `${pct}%`;
+}
+function applyLevelUpEffects(){
+  if (level > 1 && ((level - 1) % 2 === 0)){
+    CONFIG.maxLetters += 15;
+    setTimeout(() => {
+      showFloatingStatus(
+        `Capacity increased to ${CONFIG.maxLetters}`,
+        render.options.width / 2,
+        90,
+        { color: '#60a5fa', size: 14, duration: 1600 }
+      );
+    }, 300);
+  }
   const letters = getLetterBodies().filter(b => !b.isRemoved);
   const toRemoveCount = Math.floor(letters.length * CONFIG.removeFractionOnLevel);
   if (toRemoveCount > 0){
@@ -984,15 +1117,44 @@ function applyLevelUpEffects(){ if (level > 1 && ((level - 1) % 2 === 0)){ CONFI
     const pts = chosen.length * CONFIG.pointsPerRemovedLetter;
     showFloatingStatus(`Level up! Clearing ${chosen.length} letters. +${pts}`, render.options.width/2, 60, { color: '#fff59a', size: 16, duration: 1800 });
     for (const b of chosen){ if (b) spawnExplosion(b.position.x, b.position.y, 8, '#ffd27a'); }
+
+    // suspend async checks until refill completes
     suspendChecksDuringFill = true;
     removeLettersForLevelUp(chosen, pts);
+
   } else {
     showFloatingStatus(`Level up! +0`, render.options.width/2, 60, { color: '#fff59a', size: 14, duration: 1400 });
   }
-  setTimeout(() => { spawnUntilMax().then(() => { suspendChecksDuringFill = false; if (running) startAsyncGameChecks(); }); }, 360);
+
+  // refill after short delay; resume async checks only when spawnUntilMax finishes
+  setTimeout(() => {
+    spawnUntilMax().then(() => {
+      // refill complete -> allow async checks again (if game still running)
+      suspendChecksDuringFill = false;
+      if (running) startAsyncGameChecks();
+    });
+  }, 360);
+
   updateLevelUI();
 }
-function removeLettersForLevelUp(bodies, pts){ if (!bodies || bodies.length === 0) return; score += pts; scoreEl.textContent = score; for (const b of bodies){ if (!b || b.isRemoved) continue; b.isRemoved = true; clearEdgesForBody(b); } const start = performance.now(); const dur = 260; function tick(){ const t = (performance.now() - start) / dur; if (t >= 1){ for (const b of bodies){ try{ Matter.World.remove(world, b); } catch(e){} lettersOnScreen = Math.max(0, lettersOnScreen - 1); } lettersCountEl.textContent = lettersOnScreen; return; } else { for (const b of bodies) if (b) b.__fadeAlpha = 1 - t; requestAnimationFrame(tick); } } requestAnimationFrame(tick); }
+function removeLettersForLevelUp(bodies, pts){
+  if (!bodies || bodies.length === 0) return;
+  score += pts;
+  scoreEl.textContent = score;
+  if (hudScore) hudScore.textContent = score;
+  for (const b of bodies){ if (!b || b.isRemoved) continue; b.isRemoved = true; clearEdgesForBody(b); }
+  const start = performance.now();
+  const dur = 260;
+  function tick(){
+    const t = (performance.now() - start) / dur;
+    if (t >= 1){
+      for (const b of bodies){ try{ Matter.World.remove(world, b); } catch(e){} lettersOnScreen = Math.max(0, lettersOnScreen - 1); }
+      lettersCountEl.textContent = lettersOnScreen; if (mobileLettersCount) mobileLettersCount.textContent = lettersOnScreen;
+      return;
+    } else { for (const b of bodies) if (b) b.__fadeAlpha = 1 - t; requestAnimationFrame(tick); }
+  }
+  requestAnimationFrame(tick);
+}
 
 /* ---------------------- GAMEOVER CHECK & HINT SYSTEM ---------------------- */
 async function findConnectedWordHint(){
@@ -1000,7 +1162,12 @@ async function findConnectedWordHint(){
   const visited = new Set();
   const components = [];
   for (const b of bodies){ if (visited.has(b)) continue; const comp = []; const q = [b]; visited.add(b); while (q.length){ const cur = q.pop(); comp.push(cur); const neighs = adjacency.get(cur); if (neighs){ for (const n of neighs){ if (!visited.has(n) && !n.isRemoved){ visited.add(n); q.push(n); } } } } if (comp.length) components.push(comp); }
-  for (const comp of components){ const compSet = new Set(comp); comp.sort((a,b)=>a.spawnId - b.spawnId); const found = await searchComponentForWord(comp); if (found) return found; }
+  for (const comp of components){
+    const compSet = new Set(comp);
+    comp.sort((a,b)=>a.spawnId - b.spawnId);
+    const found = await searchComponentForWord(comp);
+    if (found) return found;
+  }
   return null;
 }
 
@@ -1067,7 +1234,7 @@ async function findAnyWordFromBoard(){
 }
 
 async function findHintCandidate(){
-  await dictLoadedPromise;
+  await dictLoadedPromise; // ensure dictionary available
   const connected = await findConnectedWordHint();
   if (connected && connected.length) return connected;
   const any = await findAnyWordFromBoard();
@@ -1081,8 +1248,10 @@ function applyHintToBodies(bodies){
   setTimeout(()=>{ for (const b of bodies){ if (b) b.__hint = false; } }, CONFIG.hintHighlightMs);
 }
 
+/* Public: call when player asks for hint (or when the game wants to auto-check) */
 async function provideHint(){
   if (!running) return;
+  // Using a hint breaks the combo streak immediately
   breakComboDueToHint();
   const candidate = await findHintCandidate();
   if (candidate){
@@ -1091,23 +1260,47 @@ async function provideHint(){
     showFloatingStatus(`Hint: ${word}`, render.options.width/2, 60, { color: '#ffd27a', size: 14, duration: 1200 });
     return true;
   } else {
+    // no possible word from board -> game over
     showFloatingStatus('No possible words - Game Over', render.options.width/2, 60, { color: '#ff7b7b', size: 14, duration: 1400 });
     endGame();
     return false;
   }
 }
 
-async function hasAnyPlayableWord(){ const candidate = await findHintCandidate(); return !!candidate; }
+// Evaluate whether ANY word is possible (used by game over check)
+async function hasAnyPlayableWord(){
+  const candidate = await findHintCandidate();
+  return !!candidate;
+}
 
 /* ---------------------- GAMEOVER CHECK ---------------------- */
+// old condition: letter fell off top
 function checkGameOverCondition(){
   const bodies = getLetterBodies();
   for (const b of bodies){ const radius = (b.circleRadius || CONFIG.letterSize/2); if (b.position.y - radius < -5) return true; }
+  // synchronous check doesn't decide game over; async check will call endGame when needed
   return false;
 }
+
+// We'll run periodic asynchronous checks (every 2s) to detect impossible boards
 let asyncGameCheckIv = null;
-let suspendChecksDuringFill = false;
-function startAsyncGameChecks(){ if (asyncGameCheckIv) clearInterval(asyncGameCheckIv); asyncGameCheckIv = setInterval(async ()=>{ if (!running) return; if (suspendChecksDuringFill) return; const bodies = getLetterBodies(); if (!bodies.length) return; const possible = await hasAnyPlayableWord(); if (!possible){ showFloatingStatus('No possible words - Game Over', render.options.width/2, 60, { color: '#ff7b7b', size: 14, duration: 1600 }); endGame(); } }, 2000); }
+let suspendChecksDuringFill = false; // new flag to prevent premature game-over checks
+function startAsyncGameChecks(){
+  if (asyncGameCheckIv) clearInterval(asyncGameCheckIv);
+  asyncGameCheckIv = setInterval(async ()=>{
+    if (!running) return;
+    if (suspendChecksDuringFill) return;          // <- don't run checks while suspended
+    // If there are very few letters, skip expensive check
+    const bodies = getLetterBodies();
+    if (!bodies.length) return;
+    const possible = await hasAnyPlayableWord();
+    if (!possible){
+      // end game
+      showFloatingStatus('No possible words - Game Over', render.options.width/2, 60, { color: '#ff7b7b', size: 14, duration: 1600 });
+      endGame();
+    }
+  }, 2000);
+}
 function stopAsyncGameChecks(){ if (asyncGameCheckIv) clearInterval(asyncGameCheckIv); asyncGameCheckIv = null; }
 
 /* ---------------------- UI helpers ---------------------- */
@@ -1139,9 +1332,10 @@ function startGame(){
   running = true; gameOver = false;
   score = 0; progressScore = 0;
   scoreEl.textContent = score;
+  if (hudScore) hudScore.textContent = score;
   wordsMatched = []; refreshRecentWords();
-  lettersOnScreen = 0; lettersCountEl.textContent = 0;
-  wordsCountEl.textContent = 0;
+  lettersOnScreen = 0; lettersCountEl.textContent = 0; if (mobileLettersCount) mobileLettersCount.textContent = 0;
+  wordsCountEl.textContent = 0; if (mobileWordsCount) mobileWordsCount.textContent = 0;
   level = 1;
   updateLevelUI();
   startBtn.textContent = 'Restart';
@@ -1151,20 +1345,50 @@ function startGame(){
   if (elapsedTimer) clearInterval(elapsedTimer);
   elapsedTimer = setInterval(updateTimer, 500);
   startAsyncGameChecks();
+  // reset combos on new game
   resetCombo('newgame');
 }
-function resetWorldForNewGame(){ if (!world) return; const bodies = Matter.Composite.allBodies(world).slice(); for (const b of bodies){ if (b.label === 'letter'){ try{ Matter.World.remove(world, b); } catch(e){} clearEdgesForBody(b); } } adjacency.clear(); lettersOnScreen = 0; lettersCountEl.textContent = 0; }
-function togglePause(){ if (!running) return; if (runner && runner.enabled){ runner.enabled = false; pauseBtn.textContent = 'Resume'; } else { runner.enabled = true; pauseBtn.textContent = 'Pause'; } }
+function resetWorldForNewGame(){
+  if (!world) return;
+  const bodies = Matter.Composite.allBodies(world).slice();
+  for (const b of bodies){ if (b.label === 'letter'){ try{ Matter.World.remove(world, b); } catch(e){} clearEdgesForBody(b); } }
+  adjacency.clear();
+  lettersOnScreen = 0; lettersCountEl.textContent = 0; if (mobileLettersCount) mobileLettersCount.textContent = 0;
+}
+function togglePause(){ if (!running) return; if (runner && runner.enabled){ runner.enabled = false; pauseBtn.textContent = 'Resume'; mobilePauseBtn && (mobilePauseBtn.textContent = 'Resume'); } else { runner.enabled = true; pauseBtn.textContent = 'Pause'; mobilePauseBtn && (mobilePauseBtn.textContent = 'Pause'); } }
 function endGame(){ running = false; gameOver = true; startBtn.textContent = 'Restart'; pauseBtn.textContent = 'Pause'; stopAsyncGameChecks(); if (elapsedTimer) clearInterval(elapsedTimer); setTimeout(()=> { showGameOverOverlay(`Score: ${score} Words: ${wordsMatched.length}`); }, 80); }
-function showGameOverOverlay(text){ const overlay = document.createElement('div'); overlay.style.position = 'absolute'; overlay.style.left = '50%'; overlay.style.top = '50%'; overlay.style.transform = 'translate(-50%,-50%)'; overlay.style.padding = '20px'; overlay.style.background = 'linear-gradient(180deg, rgba(2,6,23,0.92), rgba(2,6,23,0.98))'; overlay.style.border = '1px solid rgba(255,255,255,0.04)'; overlay.style.borderRadius = '12px'; overlay.style.zIndex = 999; overlay.style.textAlign = 'center'; overlay.style.color = '#e6f6ff'; overlay.innerHTML = `<div style="font-weight:700;font-size:18px;margin-bottom:8px">Game Over</div>                        <div style="color:var(--muted);margin-bottom:14px">${String(text).replace(/\n/g,'<br>')}</div>                        <div style="display:flex;gap:8px;justify-content:center">                          <button id="goRestart" class="btn">Restart</button>                          <button id="goClose" class="ghost">Close</button>                        </div>`; playWrap.appendChild(overlay); document.getElementById('goRestart').addEventListener('click', ()=>{ playWrap.removeChild(overlay); startGame(); }); document.getElementById('goClose').addEventListener('click', ()=>{ playWrap.removeChild(overlay); }); }
+function showGameOverOverlay(text){
+  const overlay = document.createElement('div');
+  overlay.style.position = 'absolute';
+  overlay.style.left = '50%';
+  overlay.style.top = '50%';
+  overlay.style.transform = 'translate(-50%,-50%)';
+  overlay.style.padding = '20px';
+  overlay.style.background = 'linear-gradient(180deg, rgba(2,6,23,0.92), rgba(2,6,23,0.98))';
+  overlay.style.border = '1px solid rgba(255,255,255,0.04)';
+  overlay.style.borderRadius = '12px';
+  overlay.style.zIndex = 999;
+  overlay.style.textAlign = 'center';
+  overlay.style.color = '#e6f6ff';
+  overlay.innerHTML = `<div style="font-weight:700;font-size:18px;margin-bottom:8px">Game Over</div>                        <div style="color:var(--muted);margin-bottom:14px">${String(text).replace(/\n/g,'<br>')}</div>                        <div style="display:flex;gap:8px;justify-content:center">                          <button id="goRestart" class="btn">Restart</button>                          <button id="goClose" class="ghost">Close</button>                        </div>`;
+  playWrap.appendChild(overlay);
+  document.getElementById('goRestart').addEventListener('click', ()=>{ playWrap.removeChild(overlay); startGame(); });
+  document.getElementById('goClose').addEventListener('click', ()=>{ playWrap.removeChild(overlay); });
+}
 
 /* Timer */
-function updateTimer(){ if (!startTime) return; const diff = Math.floor((performance.now() - startTime)/1000); const mm = String(Math.floor(diff/60)).padStart(2,'0'); const ss = String(diff%60).padStart(2,'0'); timerEl.textContent = `${mm}:${ss}`; }
+function updateTimer(){ if (!startTime) return; const diff = Math.floor((performance.now() - startTime)/1000); const mm = String(Math.floor(diff/60)).padStart(2,'0'); const ss = String(diff%60).padStart(2,'0'); timerEl.textContent = `${mm}:${ss}`; if (hudTimer) hudTimer.textContent = `${mm}:${ss}`; }
 
-/* UI wiring */
+ /* UI wiring */
 startBtn.addEventListener('click', ()=> startGame());
 pauseBtn.addEventListener('click', ()=> togglePause());
 hintBtn.addEventListener('click', ()=> provideHint());
+
+// wire mobile buttons to same actions where appropriate
+if (mobileStartBtn) mobileStartBtn.addEventListener('click', ()=> startBtn.click());
+if (mobilePauseBtn) mobilePauseBtn.addEventListener('click', ()=> pauseBtn.click());
+if (mobileHintBtn) mobileHintBtn.addEventListener('click', ()=> hintBtn.click());
+if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', ()=> sidebarToggle.click());
 
 /* Dictionary worker */
 const dictWorker = new Worker('./dictWorker.js');
@@ -1193,19 +1417,54 @@ dictWorker.onmessage = (ev) => {
 
 dictWorker.postMessage({ type: 'loadUrl', url: './wordlist.txt', estimated: 200000 });
 
-function dictContainsAsync(word){ return new Promise(resolve => { dictLoadedPromise.then(() => { const id = dictNextId++; dictPending.set(id, resolve); dictWorker.postMessage({ type: 'contains', id, word }); }); }); }
-function dictIsPrefixAsync(pref){ return new Promise(resolve => { dictLoadedPromise.then(() => { const id = dictNextId++; dictPending.set(id, resolve); dictWorker.postMessage({ type: 'isPrefix', id, pref }); }); }); }
+function dictContainsAsync(word){
+  return new Promise(resolve => {
+    dictLoadedPromise.then(() => { const id = dictNextId++; dictPending.set(id, resolve); dictWorker.postMessage({ type: 'contains', id, word }); });
+  });
+}
+function dictIsPrefixAsync(pref){
+  return new Promise(resolve => {
+    dictLoadedPromise.then(() => { const id = dictNextId++; dictPending.set(id, resolve); dictWorker.postMessage({ type: 'isPrefix', id, pref }); });
+  });
+}
 
-/* MOBILE SETUP: auto-enable Connect Mode on touch devices + one-time hint overlay */
+/* MOBILE SETUP: auto-enable connect mode on touch devices + one-time hint overlay */
 function mobileInit(){
   const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || window.matchMedia('(pointer:coarse)').matches || window.innerWidth < 800;
   if (isTouch){
-    pinnedConnectMode = true; updateConnectToggleUI(); connectToggle.style.display = 'none';
-    const note = document.getElementById('controlsNote'); if (note) note.innerHTML = 'Touch & drag to connect letters (or long-press a letter then slide). Drag without holding to reposition.';
-    try { if (!localStorage.getItem('lr_seen_mobile_hint')){ showMobileHintOverlay(); localStorage.setItem('lr_seen_mobile_hint', '1'); } } catch(e){}
+    // pin connect mode on for touch devices (same UX as before)
+    pinnedConnectMode = true;
+    updateConnectToggleUI();
+    // hide the toggle to reduce clutter on small screens
+    connectToggle.style.display = 'none';
+    // tweak the instructions text for mobile
+    const note = document.getElementById('controlsNote');
+    if (note) note.innerHTML = 'Touch & drag to connect letters (or long-press a letter then slide). Drag without holding to reposition.';
 
-    // collapse right panel and show HUD toggle for small screens
-    if (window.innerWidth < 720){ rightPanel.classList.add('collapsed'); hudToggle.style.display = 'block'; hudToggle.textContent = 'Show HUD'; }
+    // show one-time overlay hint (store in localStorage)
+    try {
+      if (!localStorage.getItem('lr_seen_mobile_hint')){
+        showMobileHintOverlay();
+        localStorage.setItem('lr_seen_mobile_hint', '1');
+      }
+    } catch(e){}
+  }
+
+  // show mobile-ui and mobile buttons on small screens
+  const smallScreen = window.innerWidth <= 980 || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  if (smallScreen){
+    mobileUI.style.display = 'block';
+    mobileButtons.style.display = 'block';
+    sidebarToggle.style.display = 'block';
+    // when mobile, hide floatingHud (we use mobileUI)
+    // floatingHud removed from DOM in this variant, so nothing to hide
+    // when mobile, keep rightPanel off-canvas
+    rightPanel.classList.remove('open');
+    mobileOverlay.classList.remove('show');
+  } else {
+    mobileUI.style.display = 'none';
+    mobileButtons.style.display = 'none';
+    sidebarToggle.style.display = 'none';
   }
 }
 
@@ -1227,13 +1486,23 @@ function showMobileHintOverlay(){
   document.body.appendChild(ov);
 }
 
-hudToggle.addEventListener('click', ()=>{
-  if (rightPanel.classList.contains('collapsed')){ rightPanel.classList.remove('collapsed'); hudToggle.textContent = 'Hide HUD'; }
-  else { rightPanel.classList.add('collapsed'); hudToggle.textContent = 'Show HUD'; }
+/* Off-canvas / sidebar toggle handlers (mobile) */
+sidebarToggle.addEventListener('click', ()=>{
+  const open = rightPanel.classList.toggle('open');
+  mobileOverlay.classList.toggle('show', open);
+  if (open) {
+    // ensure rightPanel is focusable for a11y
+    rightPanel.setAttribute('tabindex','-1');
+    rightPanel.focus();
+  }
+});
+mobileOverlay.addEventListener('click', ()=>{
+  rightPanel.classList.remove('open');
+  mobileOverlay.classList.remove('show');
 });
 
 /* init */
-function init(){ adaptConfigForDevice(); prepareGlyphs(); initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); resetCombo('init'); mobileInit(); updateConnectToggleUI(); }
+function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); resetCombo('init'); mobileInit(); updateConnectToggleUI(); }
 init();
 </script>
 </body>
