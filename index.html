@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Letter Rain — Optimized (Adjacency + Glyph Cache + Single Fade) + Levels + Particles — Shift-Drag</title>
+  <title>Letter Rain — Optimized (Adjacency + Glyph Cache + Single Fade) + Levels + Particles — Shift-Drag + Hints</title>
   <!-- Matter.js -->
   <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
   <style>
@@ -48,7 +48,7 @@
       </div>
     </div>
 
-    <div class="panel right">
+     <div class="panel right">
       <h1>Letter Rain — Connected Touch Anagrams (Optimized)</h1>
       <div class="muted">Hold <strong>Shift</strong> + left-click and drag to connect letters <em>in order</em> (letters must touch). Release to submit the sequence as a word.</div>
 
@@ -66,6 +66,7 @@
       <div class="controls">
         <button id="startBtn" class="btn">Start</button>
         <button id="pauseBtn" class="ghost">Pause</button>
+        <button id="hintBtn" class="ghost">Hint</button>
       </div>
 
       <div class="level-wrap">
@@ -84,7 +85,7 @@
           <div id="wordsCount" style="font-weight:700">0</div>
         </div>
         <div style="flex:1;text-align:right;">
-          <div style="font-size:12px;color:var(--muted)">Letters on screen</div>
+          <div style="font-size:12px;color:var(--muted)">Letters remaning</div>
           <div id="lettersCount" style="font-weight:700">0</div>
         </div>
       </div>
@@ -94,232 +95,46 @@
       <footer class="note">Drag letters to reposition them (without Shift). Hold <strong>Shift</strong> to connect letters in order.</footer>
     </div>
   </div>
-
-<script>
+ <script>
 /* Optimized Letter Rain + Leveling System + Particles + SHIFT-DRAG ordered selection
-   Updated: progressScore separates "progress that unlocks levels" from total score.
-   - Player-formed word points are added to BOTH `score` (total shown) AND `progressScore` (counts toward level-ups).
-   - Points granted by automatic removals during a level-up are added to `score` ONLY and do NOT increase `progressScore`.
-   - Defensive drawing and UI fixes to avoid stray code text rendering.
+   + HINT SYSTEM (PREFERS LONGER WORDS)
 */
-
 /* ---------------------- CONFIG ---------------------- */
 const CONFIG = {
-  letterSpawnInterval: 50,
-  maxLetters: 120,
-  initialFillCount: 120,
+  letterSpawnInterval: 50, // not used for continuous spawning anymore
+  maxLetters: 30,
+  initialFillCount: 30,
   fillBurstInterval: 22,
   letterSize: 60,
   gravity: 0.5,
-  wordMinLength: 3,
+  wordMinLength: 2,
   scorePerLetter: 10,
   spawnHorizontalPadding: 30,
   fadeDuration: 300,
   detectEveryMs: 100,
   flashPauseMs: 520,
   levelBaseScore: 100,
-  levelScoreIncrement: 80,
+  levelScoreIncrement: 50,
+  levelScoreIncrementGrowth: 10,
   spawnDecreasePerLevel: 120,
   minSpawnInterval: 50,
   removeFractionOnLevel: 0.50,
   pointsPerRemovedLetter: 5,
   maxParticles: 600,
+  // HINT config
+  hintMaxDepth: 8,
+  hintMaxNodes: 20000,
+  hintSearchMillisPerMode: 300, // ms per search pass
+  hintHighlightMs: 4200,
 };
 
-/* ---------------------- DICTIONARY ---------------------- */
-const DICTIONARY_ARRAY = [
-  // --- 2-letter words ---
-  "AA","AB","AD","AE","AG","AH","AI","AL","AM","AN","AR","AS","AT","AW","AX","AY",
-  "BA","BE","BI","BO","BY",
-  "CH","DA","DE","DI","DO",
-  "EA","ED","EE","EF","EH","EL","EM","EN","ER","ES","ET","EW","EX",
-  "FA","FE","FY",
-  "GI","GO","GU",
-  "HA","HE","HI","HM","HO",
-  "ID","IF","IN","IO","IS","IT",
-  "JA","JO",
-  "KA","KI","KO","KY",
-  "LA","LI","LO",
-  "MA","ME","MI","MM","MO","MU","MY",
-  "NA","NE","NO","NU","NY",
-  "OB","OD","OE","OF","OH","OI","OK","OM","ON","OO","OP","OR","OS","OU","OW","OX","OY",
-  "PA","PE","PI","PO",
-  "QI",
-  "RE",
-  "SH","SI","SO","ST",
-  "TA","TE","TI","TO",
-  "UG","UH","UM","UN","UP","UR","US","UT",
-  "WE","WO",
-  "XI","XU",
-  "YA","YE","YO","YU",
-  "ZA","ZE","ZO",
+/* ---------------------- DICTIONARY (array kept only temporarily for build) ---------------------- */
+const DICTIONARY_ARRAY = [ ];
 
-  // --- 3-letter words (A) ---
-  "AAH","AAL","AAS","ABA","ABB","ABS","ABY","ACE","ACH","ACK","ACT","ADD","ADO","ADS","ADZ",
-  "AFF","AFT","AGA","AGE","AGO","AGS","AHA","AHI","AHS","AIA","AID","AIL","AIM","AIN","AIR",
-  "AIS","AIT","AJI","AKA","AKE","ALA","ALB","ALE","ALL","ALP","ALS","ALT","ALU","AMA","AME",
-  "AMI","AMP","AMU","ANA","AND","ANE","ANI","ANN","ANS","ANT","ANY","APE","APO","APP","APT",
-  "ARB","ARC","ARD","ARE","ARF","ARK","ARM","ARO","ARS","ART","ARY","ASH","ASK","ASP","ASS",
-  "ATE","ATS","ATT","AUA","AUE","AUF","AUK","AVA","AVE","AVI","AVO","AWA","AWE","AWK","AWL",
-  "AWN","AXE","AYE","AYS","AYU","AZO",
-
-  // --- 3-letter words (B) ---
-  "BAA","BAC","BAD","BAE","BAG","BAH","BAL","BAM","BAN","BAO","BAP","BAR","BAS","BAT","BAW",
-  "BAY","BED","BEE","BEG","BEL","BEN","BES","BET","BEY","BEZ","BIB","BID","BIG","BIN","BIO",
-  "BIS","BIT","BIZ","BOA","BOB","BOD","BOG","BOH","BOI","BOK","BON","BOO","BOP","BOR","BOS",
-  "BOT","BOW","BOX","BOY","BRA","BRO","BRR","BRU","BUB","BUD","BUG","BUM","BUN","BUR","BUS",
-  "BUT","BUY","BYE","BYS",
-
-  // --- 3-letter words (C) ---
-  "CAA","CAB","CAD","CAF","CAG","CAL","CAM","CAN","CAP","CAR","CAT","CAW","CAY","CAZ","CEE",
-  "CEL","CEP","CHA","CHE","CHI","CID","CIG","CIS","CIT","CLY","COB","COD","COG","COL","CON",
-  "COO","COP","COR","COS","COT","COW","COX","COY","COZ","CRU","CRY","CUB","CUD","CUE","CUM",
-  "CUP","CUR","CUT","CUZ","CWM",
-
-  // --- 3-letter words (D) ---
-  "DAB","DAD","DAE","DAG","DAH","DAK","DAL","DAM","DAN","DAP","DAS","DAW","DAY","DEB","DEE",
-  "DEF","DEG","DEI","DEL","DEN","DEP","DEV","DEW","DEX","DEY","DIB","DID","DIE","DIF","DIG",
-  "DIM","DIN","DIP","DIS","DIT","DIV","DOB","DOC","DOD","DOE","DOF","DOG","DOH","DOL","DOM",
-  "DON","DOO","DOP","DOR","DOS","DOT","DOW","DOX","DOY","DRY","DSO","DUB","DUD","DUE","DUG",
-  "DUH","DUI","DUM","DUN","DUO","DUP","DUR","DUX","DYE","DZO",
-
-  // --- 3-letter words (E) ---
-  "EAN","EAR","EAS","EAT","EAU","EBB","ECH","ECO","ECU","EDH","EDS","EEK","EEL","EEN","EEW",
-  "EFF","EFS","EFT","EGG","EGO","EHS","EIK","EKE","ELD","ELF","ELK","ELL","ELM","ELS","ELT",
-  "EME","EMO","EMS","EMU","END","ENE","ENG","ENS","EON","ERA","ERE","ERF","ERG","ERK","ERM",
-  "ERN","ERR","ERS","ESS","EST","ETA","ETH","EUK","EVE","EVO","EWE","EWK","EWT","EWW","EXO",
-  "EYE",
-
-  // --- 3-letter words (F) ---
-  "FAA","FAB","FAD","FAE","FAG","FAH","FAM","FAN","FAP","FAR","FAS","FAT","FAV","FAW","FAX",
-  "FAY","FED","FEE","FEG","FEH","FEM","FEN","FER","FES","FET","FEU","FEW","FEY","FEZ","FIB",
-  "FID","FIE","FIG","FIL","FIN","FIR","FIT","FIX","FIZ","FLU","FLY","FOB","FOE","FOG","FOH",
-  "FON","FOO","FOP","FOR","FOU","FOX","FOY","FRA","FRO","FRY","FUB","FUD","FUG","FUM","FUN",
-  "FUR",
-
-  // --- 3-letter words (G) ---
-  "GAB","GAD","GAE","GAG","GAK","GAL","GAM","GAN","GAP","GAR","GAS","GAT","GAU","GAW","GAY",
-  "GED","GEE","GEL","GEM","GEN","GEO","GER","GET","GEY","GHI","GIB","GID","GIE","GIF","GIG",
-  "GIN","GIO","GIP","GIS","GIT","GJU","GNU","GOA","GOB","GOD","GOE","GON","GOO","GOR","GOS",
-  "GOT","GOV","GOX","GRR","GUB","GUE","GUL","GUM","GUN","GUP","GUR","GUS","GUT","GUV","GUY",
-  "GYM","GYP",
-
-  // --- 3-letter words (H) ---
-  "HAD","HAE","HAG","HAH","HAJ","HAM","HAN","HAO","HAP","HAS","HAT","HAW","HAY","HEH","HEM",
-  "HEN","HEP","HER","HES","HET","HEW","HEX","HEY","HIC","HID","HIE","HIM","HIN","HIP","HIS",
-  "HIT","HMM","HOA","HOB","HOC","HOD","HOE","HOG","HOH","HOI","HOM","HON","HOO","HOP","HOS",
-  "HOT","HOW","HOX","HOY","HUB","HUE","HUG","HUH","HUI","HUM","HUN","HUP","HUT","HYE","HYP",
-
-  // --- 3-letter words (I) ---
-  "ICE","ICH","ICK","ICY","IDE","IDS","IFF","IFS","IGG","ILK","ILL","IMP","ING","INK","INN",
-  "INS","INT","ION","IOS","IRE","IRK","ISH","ISM","ISO","ITA","ITS","IVY","IWI",
-
-  // --- 3-letter words (J) ---
-  "JAB","JAG","JAI","JAK","JAM","JAP","JAR","JAW","JAY","JEE","JET","JEU","JIB","JIG","JIN",
-  "JIZ","JOB","JOE","JOG","JOL","JOR","JOT","JOW","JOY","JUD","JUG","JUN","JUS","JUT",
-
-  // --- 3-letter words (K) ---
-  "KAB","KAE","KAF","KAI","KAK","KAM","KAS","KAT","KAW","KAY","KEA","KEB","KED","KEF","KEG",
-  "KEN","KEP","KET","KEX","KEY","KHI","KID","KIF","KIN","KIP","KIR","KIS","KIT","KOA","KOB",
-  "KOI","KON","KOP","KOR","KOS","KOW","KUE","KYE","KYU",
-
-  // --- 3-letter words (L) ---
-  "LAB","LAC","LAD","LAG","LAH","LAM","LAP","LAR","LAS","LAT","LAV","LAW","LAX","LAY","LEA",
-  "LED","LEE","LEG","LEI","LEK","LEP","LET","LEU","LEV","LEW","LEX","LEY","LIB","LID","LIE",
-  "LIG","LIN","LIP","LIS","LIT","LOB","LOC","LOD","LOG","LOO","LOP","LOR","LOS","LOT","LOU",
-  "LOW","LOX","LOY","LUD","LUG","LUM","LUN","LUR","LUV","LUX","LUZ","LYE","LYM",
-
-  // --- 3-letter words (M) ---
-  "MAA","MAC","MAD","MAE","MAG","MAK","MAL","MAM","MAN","MAP","MAR","MAS","MAT","MAW","MAX",
-  "MAY","MED","MEE","MEG","MEH","MEL","MEM","MEN","MES","MET","MEU","MEW","MHO","MIB","MIC",
-  "MID","MIG","MIL","MIM","MIR","MIS","MIX","MIZ","MMM","MNA","MOA","MOB","MOC","MOD","MOE",
-  "MOG","MOI","MOL","MOM","MON","MOO","MOP","MOR","MOS","MOT","MOU","MOW","MOY","MOZ","MUD",
-  "MUG","MUM","MUN","MUS","MUT","MUX","MYC",
-
-  // --- 3-letter words (N) ---
-  "NAB","NAE","NAG","NAH","NAM","NAN","NAP","NAS","NAT","NAV","NAW","NAY","NEB","NED","NEE",
-  "NEF","NEG","NEK","NEP","NET","NEW","NIB","NID","NIE","NIL","NIM","NIP","NIS","NIT","NIX",
-  "NOB","NOD","NOG","NOH","NOM","NON","NOO","NOR","NOS","NOT","NOW","NOX","NOY","NTH","NUB",
-  "NUG","NUN","NUR","NUS","NUT","NYE","NYM","NYS",
-
-  // --- 3-letter words (O) ---
-  "OAF","OAK","OAR","OAT","OBA","OBE","OBI","OBO","OBS","OCA","OCH","ODA","ODD","ODE","ODS",
-  "OES","OFF","OFT","OHM","OHO","OHS","OIK","OIL","OIS","OKA","OKE","OLD","OLE","OLM","OMA",
-  "OMS","ONE","ONO","ONS","ONY","OOF","OOH","OOM","OON","OOP","OOR","OOS","OOT","OPA","OPE",
-  "OPS","OPT","ORA","ORB","ORC","ORD","ORE","ORF","ORG","ORS","ORT","OSE","OUD","OUK","OUP",
-  "OUR","OUS","OUT","OVA","OWE","OWL","OWN","OWO","OWT","OXO","OXY","OYE","OYS",
-
-  // --- 3-letter words (P) ---
-  "PAC","PAD","PAH","PAK","PAL","PAM","PAN","PAP","PAR","PAS","PAT","PAV","PAW","PAX","PAY",
-  "PEA","PEC","PED","PEE","PEG","PEH","PEL","PEN","PEP","PER","PES","PET","PEW","PHI","PHO",
-  "PHT","PIA","PIC","PIE","PIG","PIN","PIP","PIR","PIS","PIT","PIU","PIX","PLU","PLY","POA",
-  "POD","POH","POI","POL","POM","POO","POP","POS","POT","POW","POX","POZ","PRE","PRO","PRY",
-  "PSI","PST","PUB","PUD","PUG","PUH","PUL","PUN","PUP","PUR","PUS","PUT","PUY","PWN","PYA",
-  "PYE","PYX",
-
-  // --- 3-letter words (Q) ---
-  "QAT","QIN","QIS","QUA",
-
-  // --- 3-letter words (R) ---
-  "RAD","RAG","RAH","RAI","RAJ","RAM","RAN","RAP","RAS","RAT","RAV","RAW","RAX","RAY","REB",
-  "REC","RED","REE","REF","REG","REH","REI","REM","REN","REO","REP","RES","RET","REV","REW",
-  "REX","REZ","RHO","RHY","RIA","RIB","RID","RIF","RIG","RIM","RIN","RIP","RIT","RIZ","ROB",
-  "ROC","ROD","ROE","ROK","ROM","ROO","ROT","ROW","RUB","RUC","RUD","RUE","RUG","RUM","RUN",
-  "RUT","RYA","RYE","RYU",
-
-  // --- 3-letter words (S) ---
-  "SAB","SAC","SAD","SAE","SAG","SAI","SAL","SAM","SAN","SAP","SAR","SAT","SAU","SAV","SAW",
-  "SAX","SAY","SAZ","SEA","SEC","SED","SEE","SEG","SEI","SEL","SEN","SER","SET","SEV","SEW",
-  "SEX","SEY","SEZ","SHA","SHE","SHH","SHO","SHY","SIB","SIC","SIF","SIG","SIK","SIM","SIN",
-  "SIP","SIR","SIS","SIT","SIX","SKA","SKI","SKY","SLY","SMA","SNY","SOB","SOC","SOD","SOG",
-  "SOH","SOL","SOM","SON","SOP","SOS","SOT","SOU","SOV","SOW","SOX","SOY","SOZ","SPA","SPY",
-  "SRI","STY","SUB","SUD","SUE","SUG","SUI","SUK","SUM","SUN","SUP","SUQ","SUR","SUS","SWY",
-  "SYE","SYN",
-
-  // --- 3-letter words (T) ---
-  "TAB","TAD","TAE","TAG","TAI","TAJ","TAK","TAM","TAN","TAO","TAP","TAR","TAS","TAT","TAU",
-  "TAV","TAW","TAX","TAY","TEA","TEC","TED","TEE","TEF","TEG","TEL","TEN","TES","TET","TEW",
-  "TEX","THE","THO","THY","TIC","TID","TIE","TIG","TIK","TIL","TIN","TIP","TIS","TIT","TIX",
-  "TIZ","TOC","TOD","TOE","TOG","TOM","TON","TOO","TOP","TOR","TOT","TOW","TOY","TRY","TSK",
-  "TUB","TUG","TUI","TUM","TUN","TUP","TUT","TUX","TWA","TWO","TWP","TYE","TYG",
-
-  // --- 3-letter words (U) ---
-  "UDO","UDS","UEY","UFO","UGH","UGS","UKE","ULE","ULU","UME","UMM","UMP","UMS","UMU","UNI",
-  "UNS","UPO","UPS","URB","URD","URE","URN","URP","USE","UTA","UTE","UTS","UTU","UVA","UWU",
-
-  // --- 3-letter words (V) ---
-  "VAC","VAE","VAG","VAN","VAR","VAS","VAT","VAU","VAV","VAW","VAX","VEE","VEG","VET","VEX",
-  "VIA","VID","VIE","VIG","VIM","VIN","VIS","VLY","VOE","VOG","VOL","VOM","VOR","VOW","VOX",
-  "VUG","VUM",
-
-  // --- 3-letter words (W) ---
-  "WAB","WAD","WAE","WAG","WAI","WAN","WAP","WAR","WAS","WAT","WAW","WAX","WAY","WAZ","WEB",
-  "WED","WEE","WEM","WEN","WET","WEX","WEY","WHA","WHO","WHY","WIG","WIN","WIS","WIT","WIZ",
-  "WOE","WOF","WOK","WON","WOO","WOP","WOS","WOT","WOW","WOX","WRY","WUD","WUS","WUZ","WYE",
-  "WYN",
-
-  // --- 3-letter words (X) ---
-  "XED","XIS",
-
-  // --- 3-letter words (Y) ---
-  "YAD","YAE","YAG","YAH","YAK","YAM","YAP","YAR","YAS","YAW","YAY","YEA","YEH","YEN","YEP",
-  "YER","YES","YET","YEW","YEX","YEZ","YGO","YIN","YIP","YOB","YOD","YOK","YOM","YON","YOU",
-  "YOW","YUG","YUK","YUM","YUP","YUS",
-
-  // --- 3-letter words (Z) ---
-  "ZAG","ZAP","ZAS","ZAX","ZEA","ZED","ZEE","ZEK","ZEL","ZEN","ZEP","ZEX","ZHO","ZIG","ZIN",
-  "ZIP","ZIT","ZIZ","ZOA","ZOL","ZOO","ZOS","ZUZ","ZZZ"
-];
-
-const DICTIONARY = new Set(DICTIONARY_ARRAY.map(s => s.toLowerCase()));
-const DICTIONARY_BY_LEN = {};
-let DICTIONARY_MAX_LEN = 0;
-for (const w of DICTIONARY_ARRAY){
-  const l = w.length;
-  if (!DICTIONARY_BY_LEN[l]) DICTIONARY_BY_LEN[l] = [];
-  DICTIONARY_BY_LEN[l].push(w.toLowerCase());
-  DICTIONARY_MAX_LEN = Math.max(DICTIONARY_MAX_LEN, l);
-}
+/* ---------------------- TRIE (memory-friendly) ---------------------- */
+class TrieNode { constructor(){ this.children = Object.create(null); this.isWord = false; } }
+class Trie { constructor(){ this.root = new TrieNode(); } insert(word){ let node = this.root; for (let i=0;i<word.length;i++){ const ch = word[i]; if (!node.children[ch]) node.children[ch] = new TrieNode(); node = node.children[ch]; } node.isWord = true; } contains(word){ let node = this.root; for (let i=0;i<word.length;i++){ const ch = word[i]; node = node.children[ch]; if (!node) return false; } return !!node.isWord; } isPrefix(pref){ let node = this.root; for (let i=0;i<pref.length;i++){ const ch = pref[i]; node = node.children[ch]; if (!node) return false; } return true; } }
+const trie = new Trie(); (function buildTrieFromArray(){ if (Array.isArray(DICTIONARY_ARRAY) && DICTIONARY_ARRAY.length){ for (let i = 0; i < DICTIONARY_ARRAY.length; i++){ trie.insert(String(DICTIONARY_ARRAY[i]).toLowerCase()); } try { DICTIONARY_ARRAY.length = 0; } catch(e){} } })();
 
 /* ---------------------- UTIL ---------------------- */
 const randInt = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
@@ -332,6 +147,7 @@ const scoreEl = document.getElementById('score');
 const timerEl = document.getElementById('timer');
 const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
+const hintBtn = document.getElementById('hintBtn');
 const wordsCountEl = document.getElementById('wordsCount');
 const lettersCountEl = document.getElementById('lettersCount');
 const recentWordsEl = document.getElementById('recentWords');
@@ -340,7 +156,6 @@ const levelProgressTextEl = document.getElementById('levelProgressText');
 const levelBarInnerEl = document.getElementById('levelBarInner');
 
 let engine, world, render, runner;
-let spawnTimer = null;
 let running = false;
 let startTime = null;
 let elapsedTimer = null;
@@ -348,7 +163,6 @@ let elapsedTimer = null;
 /* Scores */
 let score = 0;           // total, displayed in UI
 let progressScore = 0;   // counts toward level progression only
-
 let wordsMatched = [];
 let lettersOnScreen = 0;
 let spawnCount = 0;
@@ -396,10 +210,7 @@ function createGlyph(letter){
 }
 (function prepareGlyphs(){
   const A = 'A'.charCodeAt(0);
-  for (let i=0;i<26;i++){
-    const ch = String.fromCharCode(A + i);
-    glyphs[ch] = createGlyph(ch);
-  }
+  for (let i=0;i<26;i++){ const ch = String.fromCharCode(A + i); glyphs[ch] = createGlyph(ch); }
 })();
 
 /* Particles & Floating Status */
@@ -417,7 +228,6 @@ function spawnExplosion(x,y,count,color){
   for (let i=0;i<capped;i++) spawnParticle(x + (Math.random()-0.5)*6, y + (Math.random()-0.5)*6, color || '#fff');
 }
 function showFloatingStatus(text, x, y, opts = {}){
-  // sanitize text to prevent accidental large code being displayed
   let safeText = String(text || '').slice(0, 60);
   const now = performance.now();
   const obj = { text: safeText, x: x || (render ? render.options.width/2 : 200), y: y || (render ? render.options.height/2 : 200), start: now, duration: opts.duration || 1400, color: opts.color || '#e6f6ff', size: opts.size || 18 };
@@ -503,6 +313,18 @@ function spawnLetter(letter){
   return body;
 }
 
+/* Spawn until CONFIG.maxLetters (burst) — used after leveling up */
+function spawnUntilMax(){
+  if (!running) return;
+  const target = CONFIG.maxLetters;
+  const iv = setInterval(()=> {
+    if (!running) { clearInterval(iv); return; }
+    if (lettersOnScreen >= target){ clearInterval(iv); return; }
+    const letter = String.fromCharCode(65 + Math.floor(Math.random()*26));
+    spawnLetter(letter);
+  }, CONFIG.fillBurstInterval);
+}
+
 /* Burst-fill the box at game start */
 function fillInitialLetters(){
   const target = Math.min(CONFIG.initialFillCount, CONFIG.maxLetters);
@@ -539,11 +361,26 @@ function drawLetters(){
     // selection/flash overlays (safely)
     for (const b of bodies){
       try {
+        // HINT HIGHLIGHT (pulsing ring)
+        if (b.__hint && !b.isRemoved){
+          ctx.save();
+          const t = ((now % 1200) / 1200);
+          const pulse = 1 + (Math.sin(t * Math.PI * 2) * 0.06);
+          const r = (b.circleRadius || CONFIG.letterSize / 2) * pulse + 4;
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#ffd27a';
+          ctx.beginPath();
+          ctx.globalAlpha = 0.95;
+          ctx.arc(b.position.x, b.position.y, r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
         // STATIC WHITE STROKE FOR SELECTED LETTERS
         if (b.__selected && !b.isRemoved) {
             ctx.save();
-            ctx.lineWidth = 4;          // stroke thickness
-            ctx.strokeStyle = 'white';  // static white outline
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = 'white';
             ctx.beginPath();
             const r = (b.circleRadius || CONFIG.letterSize / 2);
             ctx.arc(b.position.x, b.position.y, r + 3, 0, Math.PI * 2);
@@ -602,7 +439,6 @@ function drawLetters(){
     }
     ctx.globalAlpha = 1;
   } catch (e) {
-    // if drawing fails entirely, don't crash the engine
     console.error('drawLetters error', e);
   }
 }
@@ -614,6 +450,19 @@ function worldPointFromEvent(evt){
   const y = (evt.clientY || (evt.touches && evt.touches[0].clientY) || 0) - rect.top;
   return { x, y };
 }
+
+// clamp a desired position so a circular body stays inside the play area
+function clampPositionToPlayWrap(x, y, radius){
+  const w = playWrap.clientWidth || render.options.width;
+  const h = playWrap.clientHeight || render.options.height;
+  const minX = Math.max(radius, 0);
+  const maxX = Math.max(radius, w - radius);
+  const minY = Math.max(radius, 0);
+  const maxY = Math.max(radius, h - radius);
+  return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) };
+}
+function getBodyRadius(b){ return (b && b.circleRadius) || (CONFIG.letterSize/2); }
+
 function onPointerDown(e){
   const p = worldPointFromEvent(e);
   pointer.isDown = true; pointer.x = p.x; pointer.y = p.y;
@@ -656,9 +505,12 @@ function onPointerMove(e){
   }
   if (dragging.body){
     const b = dragging.body;
-    Matter.Body.setPosition(b, { x: p.x, y: p.y });
+    const radius = getBodyRadius(b);
+    // clamp position so player can't drag body outside the play area
+    const clamped = clampPositionToPlayWrap(p.x, p.y, radius);
+    Matter.Body.setPosition(b, { x: clamped.x, y: clamped.y });
     Matter.Body.setAngle(b, 0);
-    dragging.lastPos = { x: p.x, y: p.y };
+    dragging.lastPos = { x: clamped.x, y: clamped.y };
     dragging.lastTime = performance.now();
   }
 }
@@ -680,6 +532,10 @@ function startDraggingBody(body, p){
   dragging.body = body;
   dragging.lastPos = { x: p.x, y: p.y };
   dragging.lastTime = performance.now();
+  // Clamp initial position to ensure body starts inside bounds
+  const radius = getBodyRadius(body);
+  const clamped = clampPositionToPlayWrap(body.position.x, body.position.y, radius);
+  Matter.Body.setPosition(body, { x: clamped.x, y: clamped.y });
   Matter.Body.setStatic(body, true);
   try { Matter.World.remove(world, body); Matter.World.add(world, body); } catch(e){}
 }
@@ -688,10 +544,21 @@ function endDraggingBody(){
   const now = performance.now();
   const dt = Math.max(1, now - (dragging.lastTime || now));
   const last = dragging.lastPos || { x: body.position.x, y: body.position.y };
-  const vx = (pointer.x - last.x) / (dt/1000);
-  const vy = (pointer.y - last.y) / (dt/1000);
+  let vx = (pointer.x - last.x) / (dt/1000);
+  let vy = (pointer.y - last.y) / (dt/1000);
+
+  // Before releasing, clamp the body's position back inside the play area
+  const radius = getBodyRadius(body);
+  const clamped = clampPositionToPlayWrap(body.position.x, body.position.y, radius);
+  Matter.Body.setPosition(body, { x: clamped.x, y: clamped.y });
+
+  // If the pointer was outside the area (causing a large velocity), damp it so the body doesn't shoot out
+  const maxVx = 20, maxVy = 30;
+  vx = clamp(vx * 0.2, -maxVx, maxVx);
+  vy = clamp(vy * 0.2, -maxVy, maxVy);
+
   Matter.Body.setStatic(body, false);
-  Matter.Body.setVelocity(body, { x: clamp(vx * 0.2, -20, 20), y: clamp(vy * 0.2, -30, 30) });
+  Matter.Body.setVelocity(body, { x: vx, y: vy });
   dragging.body = null; dragging.lastPos = null;
 }
 
@@ -707,21 +574,44 @@ function appendToSelection(b){
   if (!b || b.isRemoved) return;
   selection.bodies.push(b);
   selection.lastBody = b;
-  b.__flash = { start: performance.now(), duration: 600, color: '#60a5fa', maxScale: 0 }; b.__selected = true;
+  b.__flash = { start: performance.now(), duration: 600, color: '#60a5fa', maxScale: 0 };
+  b.__selected = true;
 }
-function finalizeSelection(){
+async function finalizeSelection(){
   selectionActive = false;
   const seq = selection.bodies.map(b => (b.letter||'').toLowerCase()).join('');
   const cx = selection.bodies.reduce((s, b) => s + b.position.x, 0) / Math.max(1, selection.bodies.length || 1);
   const cy = selection.bodies.reduce((s, b) => s + b.position.y, 0) / Math.max(1, selection.bodies.length || 1);
-  if (seq.length >= CONFIG.wordMinLength && DICTIONARY.has(seq)){
-    flashPauseAndRemove(selection.bodies.slice(), seq).then(()=>{ if (runner) runner.enabled = true; });
-  } else {
-    showFloatingStatus((seq.length >= CONFIG.wordMinLength) ? 'Not a word' : 'Too short', cx, cy, { color: '#ff7b7b', size: 16, duration: 1000 });
+  const clearSelectionVisuals = () => {
     for (const b of selection.bodies){ if (b){ b.__flash = null; b.__selected = false; } }
+    selection.bodies = []; selection.lastBody = null;
+  };
+  if (seq.length >= CONFIG.wordMinLength){
+    try {
+      const isWord = await dictContainsAsync(seq);
+      if (isWord){
+        await flashPauseAndRemove(selection.bodies.slice(), seq);
+        if (runner) runner.enabled = true;
+        clearSelectionVisuals();
+        return;
+      } else {
+        showFloatingStatus('Invalid word', cx, cy, { color: '#ff7b7b', size: 16, duration: 1000 });
+        clearSelectionVisuals();
+        if (runner) runner.enabled = true;
+        return;
+      }
+    } catch (err){
+      console.error('dict lookup error', err);
+      showFloatingStatus('Dictionary error', cx, cy, { color: '#ff7b7b', size: 16, duration: 1200 });
+      clearSelectionVisuals();
+      if (runner) runner.enabled = true;
+      return;
+    }
+  } else {
+    showFloatingStatus('Too short', cx, cy, { color: '#ff7b7b', size: 16, duration: 1000 });
+    clearSelectionVisuals();
     if (runner) runner.enabled = true;
   }
-  selection.bodies = []; selection.lastBody = null;
 }
 
 /* ---------------------- (Existing) CLUSTER DETECTION & ANAGRAMS (left in file but not auto-run) ---------------------- */
@@ -758,26 +648,20 @@ function fadeAndRemoveBodies(bodies, word){
     if (!group.length){ resolve(); return; }
     const len = word.length;
     const points = len * CONFIG.scorePerLetter;
-
     // Player-formed words count toward both the total score and progression score
     score += points;
     progressScore += points;
     scoreEl.textContent = score;
-
     wordsMatched.unshift({ word: word.toUpperCase(), points });
     if (wordsMatched.length > 12) wordsMatched.pop();
     refreshRecentWords();
     wordsCountEl.textContent = parseInt(wordsCountEl.textContent || '0') + 1;
-
     let cx = 0, cy = 0;
     for (const b of group){ if (!b) continue; cx += b.position.x; cy += b.position.y; spawnExplosion(b.position.x, b.position.y, 6, '#fff'); }
     cx /= group.length; cy /= group.length;
     showFloatingStatus(`${word.toUpperCase()} +${points}`, cx, cy, { color: '#e6f6ff', size: 18, duration: 1200 });
-
     for (const b of group){ b.isRemoved = true; clearEdgesForBody(b); }
-
     checkLevelProgress();
-
     const start = performance.now();
     const dur = CONFIG.fadeDuration;
     function tick(){
@@ -795,31 +679,41 @@ function fadeAndRemoveBodies(bodies, word){
 
 /* ---------------------- LEVEL / PROGRESSION ---------------------- */
 function computeScoreNeededForLevel(lv){
-  return CONFIG.levelBaseScore + (lv - 1) * CONFIG.levelScoreIncrement;
+  const n = Math.max(0, lv - 1);
+  const a = CONFIG.levelScoreIncrement;
+  const d = CONFIG.levelScoreIncrementGrowth;
+  return CONFIG.levelBaseScore + (n * a) + (d * (n * (n - 1) / 2));
 }
 function checkLevelProgress(){
   updateLevelUI();
-  // use progressScore for thresholds so level-up removal points don't affect progression
-  while (progressScore >= computeScoreNeededForLevel(level)){
+  const needed = computeScoreNeededForLevel(level);
+  if (progressScore >= needed){
     level += 1;
+    progressScore = 0;
     applyLevelUpEffects();
     updateLevelUI();
-    if (level > 999) break;
   }
 }
 function updateLevelUI(){
   levelNumEl.textContent = String(level);
   const needed = computeScoreNeededForLevel(level);
-  const prev = (level > 1) ? computeScoreNeededForLevel(level - 1) : 0;
-  const progress = clamp((progressScore - prev) / Math.max(1, needed - prev), 0, 1);
+  const progress = clamp((progressScore) / Math.max(1, needed), 0, 1);
   levelProgressTextEl.textContent = `Progress: ${progressScore}/${needed}`;
   const pct = Math.round(progress * 100);
   levelBarInnerEl.style.width = `${pct}%`;
 }
 function applyLevelUpEffects(){
-  const oldInterval = CONFIG.letterSpawnInterval;
-  CONFIG.letterSpawnInterval = Math.max(CONFIG.minSpawnInterval, CONFIG.letterSpawnInterval - CONFIG.spawnDecreasePerLevel);
-  restartSpawningInterval();
+  if (level > 1 && ((level - 1) % 2 === 0)){
+    CONFIG.maxLetters += 15;
+    setTimeout(() => {
+      showFloatingStatus(
+        `Capacity increased to ${CONFIG.maxLetters}`,
+        render.options.width / 2,
+        90,
+        { color: '#60a5fa', size: 14, duration: 1600 }
+      );
+    }, 300);
+  }
   const letters = getLetterBodies().filter(b => !b.isRemoved);
   const toRemoveCount = Math.floor(letters.length * CONFIG.removeFractionOnLevel);
   if (toRemoveCount > 0){
@@ -829,19 +723,17 @@ function applyLevelUpEffects(){
     const pts = chosen.length * CONFIG.pointsPerRemovedLetter;
     showFloatingStatus(`Level up! Clearing ${chosen.length} letters. +${pts}`, render.options.width/2, 60, { color: '#fff59a', size: 16, duration: 1800 });
     for (const b of chosen){ if (b) spawnExplosion(b.position.x, b.position.y, 8, '#ffd27a'); }
-    // Important: these pts are added to TOTAL score only (score), NOT to progressScore
     removeLettersForLevelUp(chosen, pts);
   } else {
-    showFloatingStatus(`Level up! +0`, render.options.width/2, 60, { color: '#fff59a', size: 16, duration: 1400 });
+    showFloatingStatus(`Level up! +0`, render.options.width/2, 60, { color: '#fff59a', size: 14, duration: 1400 });
   }
+  setTimeout(() => { spawnUntilMax(); }, 360);
   updateLevelUI();
 }
 function removeLettersForLevelUp(bodies, pts){
   if (!bodies || bodies.length === 0) return;
-  // award total-only points
   score += pts;
   scoreEl.textContent = score;
-
   for (const b of bodies){ if (!b || b.isRemoved) continue; b.isRemoved = true; clearEdgesForBody(b); }
   const start = performance.now();
   const dur = 260;
@@ -856,12 +748,143 @@ function removeLettersForLevelUp(bodies, pts){
   requestAnimationFrame(tick);
 }
 
+/* ---------------------- GAMEOVER CHECK & HINT SYSTEM ---------------------- */
+async function findConnectedWordHint(){
+  const bodies = getLetterBodies();
+  const visited = new Set();
+  const components = [];
+  for (const b of bodies){ if (visited.has(b)) continue; const comp = []; const q = [b]; visited.add(b); while (q.length){ const cur = q.pop(); comp.push(cur); const neighs = adjacency.get(cur); if (neighs){ for (const n of neighs){ if (!visited.has(n) && !n.isRemoved){ visited.add(n); q.push(n); } } } } if (comp.length) components.push(comp); }
+  for (const comp of components){
+    const compSet = new Set(comp);
+    comp.sort((a,b)=>a.spawnId - b.spawnId);
+    const found = await searchComponentForWord(comp);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function searchComponentForWord(comp){
+  const maxDepth = CONFIG.hintMaxDepth;
+  const startTime = performance.now();
+  const timeLimit = CONFIG.hintSearchMillisPerMode;
+  let best = null;
+  let bestScore = 0;
+  let nodesExplored = 0;
+
+  async function dfs(path){
+    if (performance.now() - startTime > timeLimit) return;
+    if (nodesExplored++ > CONFIG.hintMaxNodes) return;
+    const seq = path.map(b=>b.letter.toLowerCase()).join('');
+    if (seq.length >= CONFIG.wordMinLength){
+      const isWord = await dictContainsAsync(seq);
+      if (isWord){
+        const score = seq.length;
+        if (score > bestScore){ bestScore = score; best = path.slice(); }
+      }
+    }
+    if (seq.length >= maxDepth) return;
+    const isPref = await dictIsPrefixAsync(seq);
+    if (!isPref) return;
+    const last = path[path.length-1];
+    const neighs = Array.from(adjacency.get(last) || []).filter(x=>!x.isRemoved && !path.includes(x));
+    for (const n of neighs){ await dfs(path.concat(n)); if (performance.now() - startTime > timeLimit) return; if (nodesExplored > CONFIG.hintMaxNodes) return; }
+  }
+
+  for (const b of comp){ await dfs([b]); if (performance.now() - startTime > timeLimit) break; if (nodesExplored > CONFIG.hintMaxNodes) break; }
+  return best;
+}
+
+async function findAnyWordFromBoard(){
+  const bodies = getLetterBodies();
+  if (!bodies.length) return null;
+  const startTime = performance.now();
+  const timeLimit = CONFIG.hintSearchMillisPerMode;
+  const maxDepth = CONFIG.hintMaxDepth;
+  let nodesExplored = 0;
+  let best = null;
+  let bestScore = 0;
+
+  async function dfs(path, used){
+    if (performance.now() - startTime > timeLimit) return;
+    if (nodesExplored++ > CONFIG.hintMaxNodes) return;
+    const seq = path.map(b=>b.letter.toLowerCase()).join('');
+    if (seq.length >= CONFIG.wordMinLength){
+      const isWord = await dictContainsAsync(seq);
+      if (isWord){
+        const score = seq.length;
+        if (score > bestScore){ bestScore = score; best = path.slice(); }
+      }
+    }
+    if (seq.length >= maxDepth) return;
+    const isPref = await dictIsPrefixAsync(seq);
+    if (!isPref) return;
+    for (const b of bodies){ if (used.has(b) || b.isRemoved) continue; used.add(b); await dfs(path.concat(b), used); used.delete(b); if (performance.now() - startTime > timeLimit) return; if (nodesExplored > CONFIG.hintMaxNodes) return; }
+  }
+
+  for (const b of bodies){ const used = new Set([b]); await dfs([b], used); if (performance.now() - startTime > timeLimit) break; if (nodesExplored > CONFIG.hintMaxNodes) break; }
+  return best;
+}
+
+async function findHintCandidate(){
+  await dictLoadedPromise;
+  const connected = await findConnectedWordHint();
+  if (connected && connected.length) return connected;
+  const any = await findAnyWordFromBoard();
+  return any;
+}
+
+function applyHintToBodies(bodies){
+  for (const b of getLetterBodies()) b.__hint = false;
+  if (!bodies || !bodies.length) return;
+  for (const b of bodies){ b.__hint = true; }
+  setTimeout(()=>{ for (const b of bodies){ if (b) b.__hint = false; } }, CONFIG.hintHighlightMs);
+}
+
+async function provideHint(){
+  if (!running) return;
+  const candidate = await findHintCandidate();
+  if (candidate){
+    applyHintToBodies(candidate);
+    const word = candidate.map(b=>b.letter).join('');
+    showFloatingStatus(`Hint: ${word}`, render.options.width/2, 60, { color: '#ffd27a', size: 14, duration: 1200 });
+    return true;
+  } else {
+    showFloatingStatus('No possible words — ending game', render.options.width/2, 60, { color: '#ff7b7b', size: 14, duration: 1400 });
+    endGame();
+    return false;
+  }
+}
+
+async function hasAnyPlayableWord(){
+  const candidate = await findHintCandidate();
+  return !!candidate;
+}
+
 /* ---------------------- GAMEOVER CHECK ---------------------- */
-function checkGameOverCondition(){ const bodies = getLetterBodies(); for (const b of bodies){ const radius = (b.circleRadius || CONFIG.letterSize/2); if (b.position.y - radius < -5) return true; } return false; }
+function checkGameOverCondition(){
+  const bodies = getLetterBodies();
+  for (const b of bodies){ const radius = (b.circleRadius || CONFIG.letterSize/2); if (b.position.y - radius < -5) return true; }
+  return false;
+}
+
+let asyncGameCheckIv = null;
+function startAsyncGameChecks(){
+  if (asyncGameCheckIv) clearInterval(asyncGameCheckIv);
+  asyncGameCheckIv = setInterval(async ()=>{
+    if (!running) return;
+    const bodies = getLetterBodies();
+    if (!bodies.length) return;
+    const possible = await hasAnyPlayableWord();
+    if (!possible){
+      showFloatingStatus('No playable words found — Game Over', render.options.width/2, 60, { color: '#ff7b7b', size: 14, duration: 1600 });
+      endGame();
+    }
+  }, 2000);
+}
+function stopAsyncGameChecks(){ if (asyncGameCheckIv) clearInterval(asyncGameCheckIv); asyncGameCheckIv = null; }
 
 /* ---------------------- UI helpers ---------------------- */
 function refreshRecentWords(){
-  // keep safe small list, avoid injecting unexpected code
   recentWordsEl.innerHTML = '';
   if (!wordsMatched.length){
     recentWordsEl.innerHTML = '<p class="muted">No words yet.</p>'; return;
@@ -869,7 +892,6 @@ function refreshRecentWords(){
   for (const w of wordsMatched){
     const p = document.createElement('p');
     p.style.margin = '6px 0';
-    // use text nodes for safety, but allow small styled strong
     const strong = document.createElement('strong');
     strong.style.color = '#e6f6ff';
     strong.textContent = w.word;
@@ -901,7 +923,7 @@ function startGame(){
   startTime = performance.now();
   if (elapsedTimer) clearInterval(elapsedTimer);
   elapsedTimer = setInterval(updateTimer, 500);
-  restartSpawningInterval();
+  startAsyncGameChecks();
 }
 function resetWorldForNewGame(){
   if (!world) return;
@@ -911,7 +933,7 @@ function resetWorldForNewGame(){
   lettersOnScreen = 0; lettersCountEl.textContent = 0;
 }
 function togglePause(){ if (!running) return; if (runner && runner.enabled){ runner.enabled = false; pauseBtn.textContent = 'Resume'; } else { runner.enabled = true; pauseBtn.textContent = 'Pause'; } }
-function endGame(){ running = false; gameOver = true; startBtn.textContent = 'Restart'; pauseBtn.textContent = 'Pause'; if (spawnTimer) clearInterval(spawnTimer); if (elapsedTimer) clearInterval(elapsedTimer); setTimeout(()=> { showGameOverOverlay(`Score: ${score} Words: ${wordsMatched.length}`); }, 80); }
+function endGame(){ running = false; gameOver = true; startBtn.textContent = 'Restart'; pauseBtn.textContent = 'Pause'; stopAsyncGameChecks(); if (elapsedTimer) clearInterval(elapsedTimer); setTimeout(()=> { showGameOverOverlay(`Score: ${score} Words: ${wordsMatched.length}`); }, 80); }
 function showGameOverOverlay(text){
   const overlay = document.createElement('div');
   overlay.style.position = 'absolute';
@@ -925,12 +947,7 @@ function showGameOverOverlay(text){
   overlay.style.zIndex = 999;
   overlay.style.textAlign = 'center';
   overlay.style.color = '#e6f6ff';
-  overlay.innerHTML = `<div style="font-weight:700;font-size:18px;margin-bottom:8px">Game Over</div>
-                       <div style="color:var(--muted);margin-bottom:14px">${String(text).replace(/\n/g,'<br>')}</div>
-                       <div style="display:flex;gap:8px;justify-content:center">
-                         <button id="goRestart" class="btn">Restart</button>
-                         <button id="goClose" class="ghost">Close</button>
-                       </div>`;
+  overlay.innerHTML = `<div style="font-weight:700;font-size:18px;margin-bottom:8px">Game Over</div>                        <div style="color:var(--muted);margin-bottom:14px">${String(text).replace(/\n/g,'<br>')}</div>                        <div style="display:flex;gap:8px;justify-content:center">                          <button id="goRestart" class="btn">Restart</button>                          <button id="goClose" class="ghost">Close</button>                        </div>`;
   playWrap.appendChild(overlay);
   document.getElementById('goRestart').addEventListener('click', ()=>{ playWrap.removeChild(overlay); startGame(); });
   document.getElementById('goClose').addEventListener('click', ()=>{ playWrap.removeChild(overlay); });
@@ -939,24 +956,52 @@ function showGameOverOverlay(text){
 /* Timer */
 function updateTimer(){ if (!startTime) return; const diff = Math.floor((performance.now() - startTime)/1000); const mm = String(Math.floor(diff/60)).padStart(2,'0'); const ss = String(diff%60).padStart(2,'0'); timerEl.textContent = `${mm}:${ss}`; }
 
-/* Spawning interval control */
-function restartSpawningInterval(){
-  if (spawnTimer) clearInterval(spawnTimer);
-  if (!running) return;
-  spawnTimer = setInterval(()=> {
-    if (!running) return;
-    if (runner && !runner.enabled) return;
-    if (lettersOnScreen >= CONFIG.maxLetters) return;
-    const letter = String.fromCharCode(65 + Math.floor(Math.random()*26));
-    spawnLetter(letter);
-  }, CONFIG.letterSpawnInterval);
-}
-
 /* UI wiring */
 startBtn.addEventListener('click', ()=> startGame());
 pauseBtn.addEventListener('click', ()=> togglePause());
+hintBtn.addEventListener('click', ()=> provideHint());
+
+/* Dictionary worker */
+const dictWorker = new Worker('./dictWorker.js');
+let dictLoaded = false;
+let dictLoadedResolve;
+const dictLoadedPromise = new Promise(res => dictLoadedResolve = res);
+let dictNextId = 1;
+const dictPending = new Map();
+startBtn.disabled = true; const originalStartText = startBtn.textContent || 'Start'; startBtn.textContent = 'Loading dictionary...';
+
+dictWorker.onmessage = (ev) => {
+  const d = ev.data;
+  if (d.type === 'progress'){
+    startBtn.textContent = `Loading dictionary... (${d.pct || Math.round((d.loaded||0)/1000)}%)`;
+  } else if (d.type === 'loaded'){
+    dictLoaded = true; dictLoadedResolve(); startBtn.disabled = false; startBtn.textContent = originalStartText; showFloatingStatus(`Dictionary loaded (${d.count} words)`, render ? render.options.width/2 : 200, 40, { color:'#7dd3fc', size:16, duration:1400 });
+  } else if (d.type === 'contains' || d.type === 'isPrefix'){
+    const resolver = dictPending.get(d.id);
+    if (resolver){ resolver(d.result); dictPending.delete(d.id); }
+  } else if (d.type === 'error'){
+    console.error('dictWorker error:', d.message);
+    startBtn.textContent = 'Start (dict load failed)';
+    startBtn.disabled = false;
+  }
+};
+
+dictWorker.postMessage({ type: 'loadUrl', url: './wordlist.txt', estimated: 200000 });
+
+function dictContainsAsync(word){
+  return new Promise(resolve => {
+    dictLoadedPromise.then(() => { const id = dictNextId++; dictPending.set(id, resolve); dictWorker.postMessage({ type: 'contains', id, word }); });
+  });
+}
+function dictIsPrefixAsync(pref){
+  return new Promise(resolve => {
+    dictLoadedPromise.then(() => { const id = dictNextId++; dictPending.set(id, resolve); dictWorker.postMessage({ type: 'isPrefix', id, pref }); });
+  });
+}
 
 /* init */
 function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); }
 init();
 </script>
+</body>
+</html>
