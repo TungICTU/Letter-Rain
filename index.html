@@ -94,6 +94,17 @@
   /* small polish for readability of recent words list */
   .words-list p{ margin:6px 0; line-height:1.2; }
   </style>
+  <style>
+/* --- Mobile: prevent long-press text selection in the play area --- */
+#play-wrap, #play-wrap * , #gameCanvas {
+-webkit-user-select: none !important; /* iOS/Chrome */
+-moz-user-select: none !important;
+-ms-user-select: none !important;
+user-select: none !important; /* standard */
+-webkit-touch-callout: none !important; /* iOS long-press menu */
+-webkit-user-drag: none !important; /* images/dragging on webkit */
+}
+</style>
 </head>
 <body>
   <!-- Mobile overlay (for off-canvas right panel) -->
@@ -1508,6 +1519,42 @@ mobileOverlay.addEventListener('click', ()=>{
 /* init */
 function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); resetCombo('init'); mobileInit(); updateConnectToggleUI(); }
 init();
+</script>
+<script>
+// Suppress selection/contextmenu triggered by long-press inside the play area
+(function(){
+const playWrap = document.getElementById('play-wrap');
+if (!playWrap) return;
+
+
+// Prevent classic text selection (desktop & mobile) when it originates from the play area
+playWrap.addEventListener('selectstart', function(e){
+// Only cancel selection if it started inside the play area
+if (e.target && playWrap.contains(e.target)) {
+e.preventDefault();
+}
+}, false);
+
+
+// Prevent iOS/Android long-press context menu inside play area
+// Use capture to catch early; avoid interfering with other site areas
+playWrap.addEventListener('contextmenu', function(e){
+if (e.target && playWrap.contains(e.target)) {
+e.preventDefault();
+}
+}, true);
+
+
+// Extra: some browsers still select text for a touchstart+hold; cancel selection on pointerdown for touch only
+// NOTE: we do NOT call e.preventDefault() for pointerdown globally because that can break pointer events / dragging.
+playWrap.addEventListener('pointerdown', function(e){
+if (e.pointerType === 'touch'){
+// clear any existing selection programmatically
+const sel = window.getSelection && window.getSelection();
+if (sel && sel.removeAllRanges) try{ sel.removeAllRanges(); } catch(err){}
+}
+}, false);
+})();
 </script>
 </body>
 </html>
