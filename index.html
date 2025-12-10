@@ -16,12 +16,11 @@
     font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   }
   html,body{ height:100%; margin:0; background:linear-gradient(180deg,#021024 0%,#071226 100%); color:#e6f6ff; display:flex; align-items:center; justify-content:center; }
-  /* Game shell: two columns on desktop, stacked on mobile */
   .game-shell{ width:940px; max-width:96vw; display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; transition:all .24s ease; }
   .panel{ background:var(--card); padding:18px; border-radius:12px; box-shadow:0 10px 40px rgba(4,9,20,0.6); border:1px solid rgba(255,255,255,0.03); }
   .left{ display:flex; align-items:center; justify-content:center; position:relative; padding:18px; flex-direction:column; }
-  #play-wrap{ width:580px; height:660px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; touch-action:none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; -ms-user-select: none; }
-  canvas { width:100%; height:100%; display:block; touch-action:none; user-select: none; -webkit-user-select: none; -ms-user-select: none; }
+  #play-wrap{ width:580px; height:660px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; touch-action:none; }
+  canvas { width:100%; height:100%; display:block; touch-action:none; }
   .hint{ position:absolute; left:12px; top:12px; font-size:13px; color:var(--muted); z-index:6; }
   .right{ width:320px; }
   h1{ margin:0; font-size:20px; color:#e6f6ff; }
@@ -56,11 +55,12 @@
     .mobile-overlay{ position:fixed; left:0; right:0; top:0; bottom:0; background:rgba(0,0,0,0.36); z-index:9997; display:none; }
     .mobile-overlay.show{ display:block; }
 
-    #play-wrap{ width:100%; height:52vh; min-height:340px; border-radius:14px; padding:6px; }
+    /* reduce play area height to better fit smaller screens */
+    #play-wrap{ width:100%; height:56vh; min-height:360px; border-radius:14px; padding:6px; }
     .controls{ flex-wrap:wrap; gap:8px; }
     .controls button{ flex:1 1 48%; min-width:120px; }
-    button.btn{ padding:8px 12px; font-size:14px; border-radius:10px; }
-    button.ghost{ padding:8px 12px; font-size:14px; border-radius:10px; }
+    button.btn{ padding:12px 16px; font-size:16px; border-radius:12px; }
+    button.ghost{ padding:12px 16px; font-size:15px; border-radius:12px; }
     .muted{ font-size:14px; }
     .level-text{ font-size:13px; }
     .words-list{ max-height:180px; }
@@ -84,7 +84,8 @@
 
     /* Floating HUD on mobile removed in favor of mobile-ui */
     .hud-card{ display:none; }
-    .sidebar-toggle{ display:block; position:fixed; right:12px; top:12px; z-index:10000; border-radius:10px; padding:10px 12px; border:none; background:linear-gradient(180deg,var(--accent),var(--accent-2)); color:#013; font-weight:700; box-shadow:0 8px 30px rgba(2,6,23,0.6); }
+    /* hide the extra floating menu button on mobile (use in-panel Menu instead) */
+    .sidebar-toggle{ display:none; }
   }
 
   /* Larger devices: increase hit target slightly */
@@ -100,7 +101,7 @@
   <!-- Mobile overlay (for off-canvas right panel) -->
   <div id="mobileOverlay" class="mobile-overlay" tabindex="-1" aria-hidden="true"></div>
 
-  <!-- Sidebar toggle button (mobile) -->
+  <!-- Sidebar toggle button (kept but hidden on mobile) -->
   <button id="sidebarToggle" class="sidebar-toggle" style="display:none;">Menu</button>
 
   <div class="game-shell" id="gameShell">
@@ -209,7 +210,7 @@
    - Hide the Connect toggle when auto-enabled
    - Show a one-time mobile hint overlay
    - Slightly increase touch hit targets via CSS (above)
-   - Mobile UI elements that duplicate key stats and buttons (wired to same logic)
+   - Fixed touch dragging so moving after touch starts a drag
 */
 
 /* ---------------------- CONFIG ---------------------- */
@@ -218,7 +219,7 @@ const CONFIG = {
   maxLetters: 30,
   initialFillCount: 30,
   fillBurstInterval: 22,
-  letterSize: 52,
+  letterSize: 60,
   gravity: 0.5,
   wordMinLength: 2,
   scorePerLetter: 10,
@@ -287,7 +288,6 @@ const mobileOverlay = document.getElementById('mobileOverlay');
 // floating/mobile HUD elements
 const hudScore = document.getElementById('hudScore');
 const hudTimer = document.getElementById('hudTimer');
-const hudLevel = document.getElementById('hudLevel');
 const mobileUI = document.getElementById('mobileUI');
 const mobileLevelNum = document.getElementById('mobileLevelNum');
 const mobileLevelProgressText = document.getElementById('mobileLevelProgressText');
@@ -680,9 +680,9 @@ let longPressThreshold = 280; // ms
 let touchMoveThreshold = 8;    // px - movement allowed while long-pressing
 let touchStartPos = null;
 let longPressTriggered = false;
+let potentialDragBody = null; // on touch, remember initial body to start dragging if user moves
 
 function onPointerDown(e){
-  if (e && e.preventDefault) e.preventDefault();
   const p = worldPointFromEvent(e);
   pointer.isDown = true; pointer.x = p.x; pointer.y = p.y;
   const found = Matter.Query.point(Matter.Composite.allBodies(world), p);
@@ -698,7 +698,7 @@ function onPointerDown(e){
 
     // Priority rules (updated):
     // - If effective connect mode (pinned OR Shift) -> selection
-    // - If touch and not connect -> start long-press to select or drag
+    // - If touch and not connect -> start long-press to select or prepare for drag
     // - If non-touch and not connect -> drag
     if (body){
       const eff = effectiveConnectModeForEvent(e);
@@ -707,13 +707,15 @@ function onPointerDown(e){
         return;
       }
       if (isTouch){
-        // set long-press timer: if user holds without moving, enter selection mode
+        // on touch: remember the touched body — if user holds -> selection, if user moves -> drag
+        potentialDragBody = body;
         longPressTimer = setTimeout(() => {
           longPressTriggered = true;
+          // only start selection if still appropriate
           startSelection(body);
           longPressTimer = null;
+          potentialDragBody = null;
         }, longPressThreshold);
-        // don't start dragging yet — dragging will start on move if timer cancelled
         return;
       } else {
         // non-touch: normal dragging
@@ -738,7 +740,6 @@ function onPointerDown(e){
 }
 
 function onPointerMove(e){
-  if (e && e.preventDefault) e.preventDefault();
   if (!pointer.isDown) return;
   const p = worldPointFromEvent(e);
   pointer.x = p.x; pointer.y = p.y;
@@ -751,6 +752,11 @@ function onPointerMove(e){
     if ((dx*dx + dy*dy) > (touchMoveThreshold * touchMoveThreshold)){
       clearTimeout(longPressTimer);
       longPressTimer = null;
+      // if user touched a body and moved, start dragging that body
+      if (potentialDragBody && !selectionActive && !dragging.body){
+        startDraggingBody(potentialDragBody, p);
+        potentialDragBody = null;
+      }
     }
   }
 
@@ -804,6 +810,7 @@ function onPointerUp(e){
   if (longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; }
   longPressTriggered = false;
   touchStartPos = null;
+  potentialDragBody = null;
 
   if (selectionActive){
     finalizeSelection();
@@ -1089,7 +1096,6 @@ function checkLevelProgress(){
 function updateLevelUI(){
   levelNumEl.textContent = String(level);
   if (mobileLevelNum) mobileLevelNum.textContent = String(level);
-  hudLevel && (hudLevel.textContent = String(level));
   const needed = computeScoreNeededForLevel(level);
   const progress = clamp((progressScore) / Math.max(1, needed), 0, 1);
   levelProgressTextEl.textContent = `Progress: ${progressScore}/${needed}`;
@@ -1381,7 +1387,7 @@ function showGameOverOverlay(text){
 /* Timer */
 function updateTimer(){ if (!startTime) return; const diff = Math.floor((performance.now() - startTime)/1000); const mm = String(Math.floor(diff/60)).padStart(2,'0'); const ss = String(diff%60).padStart(2,'0'); timerEl.textContent = `${mm}:${ss}`; if (hudTimer) hudTimer.textContent = `${mm}:${ss}`; }
 
- /* UI wiring */
+/* UI wiring */
 startBtn.addEventListener('click', ()=> startGame());
 pauseBtn.addEventListener('click', ()=> togglePause());
 hintBtn.addEventListener('click', ()=> provideHint());
@@ -1390,9 +1396,10 @@ hintBtn.addEventListener('click', ()=> provideHint());
 if (mobileStartBtn) mobileStartBtn.addEventListener('click', ()=> startBtn.click());
 if (mobilePauseBtn) mobilePauseBtn.addEventListener('click', ()=> pauseBtn.click());
 if (mobileHintBtn) mobileHintBtn.addEventListener('click', ()=> hintBtn.click());
-if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', ()=> sidebarToggle.click());
+// mobileMenuBtn will toggle the right panel (off-canvas)
+if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', ()=>{ const open = rightPanel.classList.toggle('open'); mobileOverlay.classList.toggle('show', open); if (open) { rightPanel.setAttribute('tabindex','-1'); rightPanel.focus(); } });
 
-/* Dictionary worker */
+// Dictionary worker
 const dictWorker = new Worker('./dictWorker.js');
 let dictLoaded = false;
 let dictLoadedResolve;
@@ -1435,11 +1442,10 @@ function mobileInit(){
   const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || window.matchMedia('(pointer:coarse)').matches || window.innerWidth < 800;
   if (isTouch){
     // pin connect mode on for touch devices (same UX as before)
-    // do not auto-enable connect mode on mobile
-    // pinnedConnectMode left false so player must enable it manually
+    pinnedConnectMode = true;
     updateConnectToggleUI();
     // hide the toggle to reduce clutter on small screens
-    // keep connect toggle visible so player can enable it if they want
+    connectToggle.style.display = 'none';
     // tweak the instructions text for mobile
     const note = document.getElementById('controlsNote');
     if (note) note.innerHTML = 'Touch & drag to connect letters (or long-press a letter then slide). Drag without holding to reposition.';
@@ -1458,7 +1464,7 @@ function mobileInit(){
   if (smallScreen){
     mobileUI.style.display = 'block';
     mobileButtons.style.display = 'block';
-    sidebarToggle.style.display = 'block';
+    // do not show the floating sidebarToggle — we use the in-panel Menu button
     // when mobile, hide floatingHud (we use mobileUI)
     // floatingHud removed from DOM in this variant, so nothing to hide
     // when mobile, keep rightPanel off-canvas
