@@ -20,8 +20,8 @@
   .game-shell{ width:940px; max-width:96vw; display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; transition:all .24s ease; }
   .panel{ background:var(--card); padding:18px; border-radius:12px; box-shadow:0 10px 40px rgba(4,9,20,0.6); border:1px solid rgba(255,255,255,0.03); }
   .left{ display:flex; align-items:center; justify-content:center; position:relative; padding:18px; flex-direction:column; }
-  #play-wrap{ width:580px; height:660px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; touch-action:none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; -ms-user-select: none; }
-  canvas { width:100%; height:100%; display:block; touch-action:none; user-select: none; -webkit-user-select: none; -ms-user-select: none; }
+  #play-wrap{ width:580px; height:660px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); overflow:hidden; position:relative; touch-action:none; -webkit-tap-highlight-color: transparent; }
+  canvas { width:100%; height:100%; display:block; touch-action:none; }
   .hint{ position:absolute; left:12px; top:12px; font-size:13px; color:var(--muted); z-index:6; }
   .right{ width:320px; }
   h1{ margin:0; font-size:20px; color:#e6f6ff; }
@@ -1512,6 +1512,21 @@ mobileOverlay.addEventListener('click', ()=>{
 
 /* init */
 function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); resetCombo('init'); mobileInit(); updateConnectToggleUI(); }
+(function preventSelectionOnPlayArea(){
+  try{
+    if (!canvas || !playWrap) return;
+    // prevent native context menu on long-press inside play area
+    canvas.addEventListener('contextmenu', function(e){ if (e && e.preventDefault && e.target && e.target.closest && e.target.closest('#play-wrap')) e.preventDefault(); }, { passive:false });
+    // prevent native drag image
+    canvas.setAttribute('draggable','false');
+    canvas.addEventListener('dragstart', function(e){ if (e && e.preventDefault) e.preventDefault(); }, false);
+    // prevent selection starting within play area
+    document.addEventListener('selectstart', function(e){ try{ if (e && e.target && e.target.closest && e.target.closest('#play-wrap')) e.preventDefault(); }catch(err){} }, false);
+    // clear any accidental selection that appears inside the play area
+    document.addEventListener('selectionchange', function(){ try{ const sel = document.getSelection(); if (!sel || sel.isCollapsed) return; const node = sel.anchorNode && (sel.anchorNode.nodeType===3 ? sel.anchorNode.parentElement : sel.anchorNode); if (node && node.closest && node.closest('#play-wrap')) sel.removeAllRanges(); }catch(err){} });
+  }catch(err){}
+})();
+
 init();
 </script>
 </body>
