@@ -70,13 +70,13 @@
 
     /* Mobile-specific UI container */
     .mobile-ui{ display:block; width:100%; margin-bottom:10px; }
-    .mobile-toprow{ display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; }
+    .mobile-toprow{ display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; user-select: none;}
     .mobile-top-card{ background:linear-gradient(180deg, rgba(2,6,23,0.72), rgba(2,6,23,0.6)); padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); display:flex; gap:8px; align-items:center; min-width:60px; }
     .mobile-top-left{ display:flex; gap:8px; align-items:center; }
     .mobile-mid{ margin-bottom:8px; }
-    .mobile-level-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .mobile-level-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; user-select: none;}
     .mobile-progress{ margin-top:6px; }
-    .mobile-stats{ display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; }
+    .mobile-stats{ display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; user-select: none;}
 
     /* Floating HUD hidden when mobile-ui is shown */
     #floatingHud{ display:none !important; }
@@ -99,9 +99,6 @@
   <!-- Mobile overlay (for off-canvas right panel) -->
   <div id="mobileOverlay" class="mobile-overlay" tabindex="-1" aria-hidden="true"></div>
 
-  <!-- Sidebar toggle button (kept but hidden on mobile) -->
-  <button id="sidebarToggle" class="sidebar-toggle" style="display:none;">Menu</button>
-
   <div class="game-shell" id="gameShell">
     <div class="panel left">
       <!-- MOBILE UI: visible only on small screens -->
@@ -112,7 +109,7 @@
             <div class="mobile-top-card"><div style="font-size:12px;color:var(--muted);">Time</div><div id="hudTimer" style="font-weight:700;margin-left:6px;">00:00</div></div>
           </div>
           <!-- menu button uses existing sidebarToggle for consistency -->
-          <div><button id="mobileMenuBtn" class="ghost" style="padding:8px 10px;">Menu</button></div>
+          <div><button id="mobileMenuBtn" class="sidebar-toggle" style="padding:8px 10px;">Menu</button></div>
         </div>
 
         <div class="mobile-mid">
@@ -142,7 +139,7 @@
       </div>
 
       <!-- MOBILE BUTTONS (duplicates that call same actions) -->
-      <div id="mobileButtons" style="display:none;margin-top:10px;gap:8px;">
+      <div id="mobileButtons" style="display:none;margin-top:10px;gap:8px;user-select:none;">
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button id="mobileStartBtn" class="btn">Start</button>
           <button id="mobilePauseBtn" class="ghost">Pause</button>
@@ -179,7 +176,7 @@
       <div class="level-wrap">
         <div class="level-row">
           <div style="font-weight:700">Level <span id="levelNum">1</span></div>
-          <div class="level-text" id="levelProgressText">Words: 0/3</div>
+          <div class="level-text" id="levelProgressText">Progress: 0/100</div>
         </div>
         <div class="level-bar" aria-hidden="true">
           <div id="levelBarInner" class="level-bar-inner"></div>
@@ -1344,7 +1341,6 @@ function startGame(){
   wordsCountEl.textContent = 0; if (mobileWordsCount) mobileWordsCount.textContent = 0;
   level = 1;
   updateLevelUI();
-  startBtn.textContent = 'Restart';
   pauseBtn.textContent = 'Pause';
   fillInitialLetters();
   startTime = performance.now();
@@ -1436,10 +1432,10 @@ function dictIsPrefixAsync(pref){
 }
 
 /* MOBILE SETUP: auto-enable connect mode on touch devices + one-time hint overlay */
+
 function mobileInit(){
   const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || window.matchMedia('(pointer:coarse)').matches || window.innerWidth < 800;
   if (isTouch){
-    // pin connect mode on for touch devices (same UX as before)
     updateConnectToggleUI();
     // tweak the instructions text for mobile
     const note = document.getElementById('controlsNote');
@@ -1452,26 +1448,41 @@ function mobileInit(){
         localStorage.setItem('lr_seen_mobile_hint', '1');
       }
     } catch(e){}
+  } else {
+    // make sure pinnedConnectMode isn't accidentally left on for non-touch layouts
+    // but do not force-disable if user explicitly pinned it earlier.
+    // we only clear the transientConnectMode here.
+    transientConnectMode = false;
+    updateConnectToggleUI();
   }
 
   // show mobile-ui and mobile buttons on small screens
   const smallScreen = window.innerWidth <= 980 || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   if (smallScreen){
-    mobileUI.style.display = 'block';
-    mobileButtons.style.display = 'block';
-    // do not show the floating sidebarToggle — we use the in-panel Menu button
-    // when mobile, hide floatingHud (we use mobileUI)
-    // floatingHud removed from DOM in this variant, so nothing to hide
-    // when mobile, keep rightPanel off-canvas
-    rightPanel.classList.remove('open');
-    mobileOverlay.classList.remove('show');
+    if (mobileUI) mobileUI.style.display = 'block';
+    if (mobileButtons) mobileButtons.style.display = 'block';
+    // ensure the floating sidebar toggle is visible on small screens so users can open the panel
+    if (sidebarToggle) sidebarToggle.style.display = 'block';
+    // when mobile, keep rightPanel closed off-canvas and hide overlay
+    if (rightPanel) rightPanel.classList.remove('open');
+    if (mobileOverlay) mobileOverlay.classList.remove('show');
   } else {
-    mobileUI.style.display = 'none';
-    mobileButtons.style.display = 'none';
-    sidebarToggle.style.display = 'none';
+    if (mobileUI) mobileUI.style.display = 'none';
+    if (mobileButtons) mobileButtons.style.display = 'none';
+    // hide the floating sidebar toggle on larger screens (desktop layout shows controls)
+    if (sidebarToggle) sidebarToggle.style.display = 'none';
+    // ensure the off-canvas overlay is hidden
+    if (mobileOverlay) mobileOverlay.classList.remove('show');
+    if (rightPanel) rightPanel.classList.remove('open');
   }
 }
 
+// ensure UI responds to load and resize so switching between desktop/mobile layouts is seamless
+function refreshResponsiveUI(){
+  try{ mobileInit(); updateBoundaries(); }catch(e){}
+}
+window.addEventListener('load', refreshResponsiveUI);
+window.addEventListener('resize', refreshResponsiveUI);
 function showMobileHintOverlay(){
   const ov = document.createElement('div');
   ov.style.position = 'fixed';
