@@ -128,6 +128,9 @@
     .mobile-level-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; user-select: none;}
     .mobile-progress{ margin-top:6px; }
     .mobile-stats{ display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; user-select: none;}
+    /* words list horizontally scrollable */
+    .word-list{display:flex;gap:8px;overflow:auto;padding:8px 4px;white-space:nowrap}
+    .word-pill{background:var(--glass);padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px;border:1px solid rgba(255,255,255,0.02)}
 
     /* Floating HUD hidden when mobile-ui is shown */
     #floatingHud{ display:none !important; }
@@ -175,6 +178,13 @@
           <div style="min-width:40%;" class="mobile-top-card"><div style="font-size:12px;color:var(--muted);">Words</div><div id="mobileWordsCount" style="font-weight:700;margin-left:6px;">0</div></div>
           <div style="min-width:40%;" class="mobile-top-card"><div style="font-size:12px;color:var(--muted);">Letters</div><div id="mobileLettersCount" style="font-weight:700;margin-left:6px;">0</div></div>
         </div>
+
+        <!-- word list (horizontal) -->
+          <div style="margin-top:6px">
+          <div id="mobileWordList" class="word-list" aria-live="polite">
+          <div class="word-pill muted">No words yet</div>
+          </div>
+          </div>
       </div>
 
       <div id="play-wrap" aria-label="game area">
@@ -1561,6 +1571,31 @@ function refreshRecentWords(){
 
     recentWordsEl.appendChild(p);
   }
+
+  // --- Mobile recent-words sync (added) ---
+  try {
+    if (typeof mobileWordList !== 'undefined' && mobileWordList) {
+      mobileWordList.innerHTML = '';
+      if (!wordsMatched || !wordsMatched.length) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'word-pill muted';
+        placeholder.textContent = 'No words yet';
+        mobileWordList.appendChild(placeholder);
+      } else {
+        for (const w of wordsMatched) {
+          const pill = document.createElement('div');
+          pill.className = 'word-pill';
+          // Add a small visual hint for rarity on mobile (non-intrusive)
+          if (!w.hinted && w.rarity && w.rarity !== 'common') {
+            pill.classList.add('rarity-' + w.rarity);
+          }
+          pill.textContent = (w.word || '').toUpperCase();
+          mobileWordList.appendChild(pill);
+        }
+      }
+    }
+  } catch (e) { console.warn('mobile recent words sync failed', e); }
+  // --- end mobile sync ---
 }
 
 function startGame(){
@@ -1749,6 +1784,11 @@ mobileOverlay.addEventListener('click', ()=>{
   rightPanel.classList.remove('open');
   mobileOverlay.classList.remove('show');
 });
+
+function pushWord(word){ if (!word) return; // remove placeholder if present
+if (mobileWordList.children.length === 1 && mobileWordList.children[0].textContent.trim() === 'No words yet') mobileWordList.innerHTML = '';
+const pill = document.createElement('div'); pill.className = 'word-pill'; pill.textContent = word.toUpperCase(); mobileWordList.insertBefore(pill, mobileWordList.firstChild);
+}
 
 /* init */
 function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); resetCombo('init'); mobileInit(); updateConnectToggleUI(); }
