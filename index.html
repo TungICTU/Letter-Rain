@@ -46,6 +46,57 @@
   .combo-bar{ flex:1; height:10px; background:rgba(255,255,255,0.03); border-radius:8px; overflow:hidden; }
   .combo-bar-inner{ height:100%; width:0%; background:linear-gradient(90deg,#ffd27a,#ffb86b); transition:width 120ms linear; pointer-events:none; }
 
+  /* -----------------------------
+   Modern rarity tag styles
+   Paste into the <style> section
+   ----------------------------- */
+.rarity-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid rgba(255,255,255,0.04);
+  box-shadow: 0 6px 20px rgba(2,6,23,0.45);
+  transition: transform 200ms cubic-bezier(.2,.9,.2,1), box-shadow 200ms, opacity 200ms;
+  user-select: none;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* tiny colored dot to the left */
+.rarity-tag::before{
+  content: "";
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  flex:0 0 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25), 0 0 10px rgba(0,0,0,0.06) inset;
+  transform: translateY(-0.5px);
+}
+
+/* per-rarity colors (background subtle, text uses the RARITY_COLORS) */
+.rarity-uncommon { color: #7dd3fc; background: linear-gradient(90deg, rgba(125,211,252,0.12), rgba(96,165,250,0.08)); border-color: rgba(125,211,252,0.12); }
+.rarity-rare     { color: #a78bfa; background: linear-gradient(90deg, rgba(167,139,250,0.12), rgba(124,58,237,0.06)); border-color: rgba(167,139,250,0.12); }
+.rarity-epic     { color: #ffd27a; background: linear-gradient(90deg, rgba(255,210,122,0.12), rgba(255,184,107,0.06)); border-color: rgba(255,210,122,0.12); }
+.rarity-legendary{ color: #ff6b6b; background: linear-gradient(90deg, rgba(255,107,107,0.12), rgba(255,80,80,0.06)); border-color: rgba(255,107,107,0.12); }
+
+/* dot color follows text color for visual consistency */
+.rarity-uncommon::before  { background: #7dd3fc; box-shadow: 0 6px 18px rgba(125,211,252,0.12); }
+.rarity-rare::before      { background: #a78bfa; box-shadow: 0 6px 18px rgba(167,139,250,0.12); }
+.rarity-epic::before      { background: #ffd27a; box-shadow: 0 6px 18px rgba(255,210,122,0.12); }
+.rarity-legendary::before { background: #ff6b6b; box-shadow: 0 6px 18px rgba(255,107,107,0.12); }
+
+/* compact pills for the recent words list so they don't wrap oddly */
+.words-list .rarity-tag { margin-left:8px; font-size:11px; padding:3px 8px; }
+
+
   /* Mobile-friendly tweaks */
   @media (max-width:980px){
     .game-shell{ grid-template-columns:1fr; gap:12px; padding:12px; width:100%; max-width:100vw; }
@@ -151,8 +202,8 @@
     </div>
 
      <div class="panel right" id="rightPanel" role="region" aria-label="Game controls">
-      <h1>Letter Rain — Connected Touch Anagrams (Mobile Friendly)</h1>
-      <div class="muted" id="controlsNote">Hold <strong>Shift</strong> + left-click and drag to connect letters <em>in order</em> (letters must touch). Release to submit the sequence as a word.</div>
+      <h1>Letter Rain - Connected Touch Anagrams</h1>
+      <div class="muted" id="controlsNote">Hold [<strong>Shift</strong> + left-click] and drag to connect the letters. Release to submit the sequence as a word.</div>
 
       <div class="stat" style="margin-top:16px;">
         <div>
@@ -196,19 +247,11 @@
 
       <div class="words-list" id="recentWords"><p class="muted">No words yet.</p></div>
 
-      <footer class="note">Drag letters to reposition them (without Shift). Hold <strong>Shift</strong> to connect letters in order. On touch devices: long-press or enable Connect Mode.</footer>
+      <footer class="note">Connect letters and earn as much points as you can before you ran out of words to match!</footer>
     </div>
   </div>
  <script>
-/* Mobile-friendly additions:
-   - Auto-enable Connect Mode on touch / small screens
-   - Hide the Connect toggle when auto-enabled
-   - Show a one-time mobile hint overlay
-   - Slightly increase touch hit targets via CSS (above)
-   - Fixed touch dragging so moving after touch starts a drag
-*/
 
-/* ---------------------- CONFIG ---------------------- */
 const CONFIG = {
   letterSpawnInterval: 50, // not used for continuous spawning anymore
   maxLetters: 30,
@@ -244,19 +287,168 @@ const CONFIG = {
   comboDurationMin: 10, // minimum seconds from 7th
 };
 
-/* ---------------------- DICTIONARY (array kept only temporarily for build) ---------------------- */
+const RARITY_PERCENTILES = { uncommon: 0.60, rare: 0.80, epic: 0.90, legendary: 0.97 };
+const RARITY_BONUS = { uncommon: 10, rare: 20, epic: 30, legendary: 50 };
+const RARITY_COLORS = { common: '#e6e9ee', uncommon: '#7dd3fc', rare: '#a78bfa', epic: '#ffd27a', legendary: '#ff6b6b' };
+
+const STORAGE_KEY = 'game_rarity_v1';
+const MAX_LOCALSTORAGE_BYTES = 3 * 1024 * 1024; // 3MB guard
+
+let rarityMap = null;       // word -> { score, bucket, rankPct }
+let rarityThresholds = {};
+
+function quantile(sortedArr, q){
+  if (!sortedArr.length) return 0;
+  const pos = (sortedArr.length - 1) * q;
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  if (lo === hi) return sortedArr[lo];
+  return sortedArr[lo] * (hi - pos) + sortedArr[hi] * (pos - lo);
+}
+
+function buildRarityFromWordlistNgramsSync(words, n = 3){
+  // words: array of lowercase words
+  const ngramCounts = Object.create(null);
+  const add = ng => ngramCounts[ng] = (ngramCounts[ng] || 0) + 1;
+  for (const w of words){
+    const padded = ` ${w} `;
+    for (let i = 0; i <= padded.length - n; i++) add(padded.slice(i, i + n));
+  }
+  const rarityScores = new Array(words.length);
+  for (let i = 0; i < words.length; i++){
+    const w = words[i];
+    const padded = ` ${w} `;
+    let sum = 0, count = 0;
+    for (let j = 0; j <= padded.length - n; j++){
+      const ng = padded.slice(j, j + n);
+      sum += (ngramCounts[ng] || 0);
+      count++;
+    }
+    const avg = (count ? sum / count : 0);
+    // invert: smaller avg => rarer
+    const score = 1 / (avg + 1e-9);
+    rarityScores[i] = score;
+  }
+  // compute thresholds
+  const sortedScores = rarityScores.slice().sort((a,b)=>a-b);
+  rarityThresholds.uncommon = quantile(sortedScores, RARITY_PERCENTILES.uncommon);
+  rarityThresholds.rare     = quantile(sortedScores, RARITY_PERCENTILES.rare);
+  rarityThresholds.epic     = quantile(sortedScores, RARITY_PERCENTILES.epic);
+  rarityThresholds.legendary= quantile(sortedScores, RARITY_PERCENTILES.legendary);
+
+  // assign to map
+  const map = Object.create(null);
+  for (let i = 0; i < words.length; i++){
+    const w = words[i];
+    const s = rarityScores[i];
+    let bucket = 'common';
+    if (s >= rarityThresholds.legendary) bucket = 'legendary';
+    else if (s >= rarityThresholds.epic) bucket = 'epic';
+    else if (s >= rarityThresholds.rare) bucket = 'rare';
+    else if (s >= rarityThresholds.uncommon) bucket = 'uncommon';
+    map[w] = { score: s, bucket };
+  }
+  return map;
+}
+
+function computeRarity(word){
+  if (!word) return 'common';
+  const w = String(word).toLowerCase();
+  if (rarityMap && rarityMap[w]) return rarityMap[w].bucket;
+  // fallback length heuristic
+  if (w.length <= 3) return 'common';
+  if (w.length === 4) return 'uncommon';
+  if (w.length === 5) return 'rare';
+  if (w.length === 6) return 'epic';
+  return 'legendary';
+}
+
+function bytesForString(str){
+  return new Blob([str]).size;
+}
+function tryLoadFromStorage(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.mapVersion || !parsed.map) return false;
+    rarityMap = parsed.map;
+    rarityThresholds = parsed.thresholds || {};
+    console.log('Rarity: loaded from cache');
+    return true;
+  } catch(e){ console.warn('Rarity cache load failed', e); return false; }
+}
+function trySaveToStorage(mapObj){
+  try{
+    const payload = { mapVersion: 1, map: mapObj, thresholds: rarityThresholds };
+    const s = JSON.stringify(payload);
+    if (bytesForString(s) > MAX_LOCALSTORAGE_BYTES){ console.warn('Rarity map too large to cache (~' + bytesForString(s) + ' bytes)'); return false; }
+    localStorage.setItem(STORAGE_KEY, s);
+    console.log('Rarity: cached to localStorage');
+    return true;
+  } catch(e){ console.warn('Rarity cache save failed', e); return false; }
+}
+
+async function initRarityFromWordlist(path = './wordlist.txt'){
+  // Attempt to use cache first
+  if (tryLoadFromStorage()) return true;
+
+  try{
+    const resp = await fetch(path);
+    if (!resp.ok) throw new Error('fetch failed');
+    const txt = await resp.text();
+    const words = txt.split(/\r?\n/).map(w=>w.trim().toLowerCase()).filter(Boolean);
+    if (!words.length) throw new Error('empty wordlist');
+
+    // Build map (synchronous CPU work) - warn for very large lists
+    if (words.length > 200000) console.warn('Large wordlist detected (' + words.length + ' words) — building rarity map may take a few seconds in the browser.');
+
+    const map = buildRarityFromWordlistNgramsSync(words, 3);
+    // Save only non-common entries to keep map lighter (optional): keep all to preserve accuracy
+    // To reduce size, we can drop 'common' entries
+    const compact = Object.create(null);
+    for (const w of words){
+      const entry = map[w];
+      if (!entry) continue;
+      // store all buckets — you can change to 'if (entry.bucket !== "common")' to make smaller
+      compact[w] = entry;
+    }
+    rarityMap = compact;
+    trySaveToStorage(compact);
+    console.log('Rarity: built from wordlist (n-gram proxy)');
+    return true;
+  } catch(e){
+    console.warn('initRarityFromWordlist failed:', e);
+    return false;
+  }
+}
+
+// Kick off initialization but do not block game load. When ready, computeRarity() will use it.
+(function(){
+  // Start init asynchronously
+  setTimeout(()=>{
+
+    /* initRarityFromWordlist call disabled in JSON-only patch */
+  });
+})();
+
+window.__gameRarity = {
+  getMap: ()=>rarityMap,
+  getThresholds: ()=>rarityThresholds,
+  computeRarity
+};
+
+// Rarity label formatting
+function rarityLabel(name){ return (name||'').toUpperCase(); }
+
 const DICTIONARY_ARRAY = [ ];
 
-/* ---------------------- TRIE (memory-friendly) ---------------------- */
 class TrieNode { constructor(){ this.children = Object.create(null); this.isWord = false; } }
 class Trie { constructor(){ this.root = new TrieNode(); } insert(word){ let node = this.root; for (let i=0;i<word.length;i++){ const ch = word[i]; if (!node.children[ch]) node.children[ch] = new TrieNode(); node = node.children[ch]; } node.isWord = true; } contains(word){ let node = this.root; for (let i=0;i<word.length;i++){ const ch = word[i]; node = node.children[ch]; if (!node) return false; } return !!node.isWord; } isPrefix(pref){ let node = this.root; for (let i=0;i<pref.length;i++){ const ch = pref[i]; node = node.children[ch]; if (!node) return false; } return true; } }
 const trie = new Trie(); (function buildTrieFromArray(){ if (Array.isArray(DICTIONARY_ARRAY) && DICTIONARY_ARRAY.length){ for (let i = 0; i < DICTIONARY_ARRAY.length; i++){ trie.insert(String(DICTIONARY_ARRAY[i]).toLowerCase()); } try { DICTIONARY_ARRAY.length = 0; } catch(e){} } })();
 
-/* ---------------------- UTIL ---------------------- */
 const randInt = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 
-/* ---------------------- DOM & STATE ---------------------- */
 const playWrap = document.getElementById('play-wrap');
 const canvas = document.getElementById('gameCanvas');
 const scoreEl = document.getElementById('score');
@@ -297,7 +489,6 @@ const mobileHintBtn = document.getElementById('mobileHintBtn');
 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
 const mobileConnectToggle = document.getElementById('mobileConnectToggle');
 
-// ----------------- CONNECT MODE (pinned + transient Shift) -----------------
 // Replaces the old single `connectMode` boolean with pinned + transient states.
 const connectToggle = document.getElementById('connectToggle');
 let pinnedConnectMode = false;      // toggled by the Connect button
@@ -345,7 +536,6 @@ window.addEventListener('keyup', (ev) => {
 });
 // wire mobile connect toggle to the same action
 if (mobileConnectToggle) mobileConnectToggle.addEventListener('click', () => { togglePinnedConnectMode(); });
-// --------------------------------------------------------------------------
 
 let engine, world, render, runner;
 let running = false;
@@ -426,7 +616,6 @@ function showFloatingStatus(text, x, y, opts = {}){
   floatingStatuses.push(obj);
 }
 
-/* ---------------------- MATTER SETUP ---------------------- */
 function initMatter(){
   if (engine) return;
   engine = Matter.Engine.create();
@@ -492,7 +681,6 @@ function clearEdgesForBody(b){ const neighbors = adjacency.get(b); if (!neighbor
 function handleCollisions(ev){ for (const pair of ev.pairs){ const a = pair.bodyA, b = pair.bodyB; if (a.label === 'letter' && b.label === 'letter' && !a.isRemoved && !b.isRemoved){ addEdge(a,b); } } }
 function handleCollisionEnd(ev){ for (const pair of ev.pairs){ const a = pair.bodyA, b = pair.bodyB; if (a.label === 'letter' && b.label === 'letter'){ removeEdge(a,b); } } }
 
-/* ---------------------- SPAWN LETTER ---------------------- */
 function spawnLetter(letter){
   const w = playWrap.clientWidth, h = playWrap.clientHeight;
   const diameter = CONFIG.letterSize, radius = diameter/2;
@@ -542,7 +730,6 @@ function fillInitialLetters(){
   }, CONFIG.fillBurstInterval);
 }
 
-/* ---------------------- DRAW (use glyph cache) ---------------------- */
 function drawLetters(){
   try {
     const ctx = render.context;
@@ -649,7 +836,6 @@ function drawLetters(){
   }
 }
 
-/* ---------------------- POINTER / DRAGGING & SELECTION (SHIFT) ---------------------- */
 function worldPointFromEvent(evt){
   const rect = playWrap.getBoundingClientRect();
   const x = (evt.clientX || (evt.touches && evt.touches[0].clientX) || 0) - rect.left;
@@ -853,7 +1039,6 @@ function endDraggingBody(){
   dragging.body = null; dragging.lastPos = null;
 }
 
-/* ---------------------- Selection helpers ---------------------- */
 function startSelection(firstBody){
   selectionActive = true;
   selection.bodies = [];
@@ -905,7 +1090,6 @@ async function finalizeSelection(){
   }
 }
 
-/* ---------------------- (Existing) CLUSTER DETECTION & ANAGRAMS (left in file but not auto-run) ---------------------- */
 function getLetterBodies(){ return Matter.Composite.allBodies(world).filter(b => b.label === 'letter' && !b.isRemoved); }
 function buildLetterCounts(bodies){ const counts = {}; for (const b of bodies){ const ch = (b.letter || '').toLowerCase(); if (!ch) continue; counts[ch] = (counts[ch]||0) + 1; } return counts; }
 function canFormWordFromCounts(word, counts){ const temp = {}; for (const ch of word){ temp[ch] = (temp[ch]||0) + 1; if ((counts[ch]||0) < temp[ch]) return false; } return true; }
@@ -913,7 +1097,6 @@ function findConnectedSubsetForWord(clusterBodies, word){ return null; }
 function processClusterForAnagrams(clusterBodies){ return false; }
 function detectClustersAndRemoveWords(){ /* intentionally no-op in SHIFT-mode */ }
 
-/* ---------------------- FLASH + SINGLE FADE LOOP FOR REMOVAL ---------------------- */
 function flashPauseAndRemove(bodies, word){
   return new Promise(resolve => {
     if (!bodies || bodies.length === 0){ resolve(false); return; }
@@ -937,27 +1120,59 @@ function fadeAndRemoveBodies(bodies, word){
   return new Promise(resolve => {
     const group = bodies.filter(b => b && !b.isRemoved);
     if (!group.length){ resolve(); return; }
-    const len = word.length;
-    const points = len * CONFIG.scorePerLetter;
+
+    const len = (word || '').length;
+    const basePoints = len * CONFIG.scorePerLetter;
+
+    // If any body was marked as a hint recently, treat this as a HINTED match and
+    // do NOT grant rarity bonuses, floating rarity status, or rarity tags.
+    const hinted = group.some(b => !!b.__hint);
+
+    // Compute rarity & bonus only when NOT hinted
+    const rarity = hinted ? 'common' : computeRarity(word);
+    const rarityBonus = (!hinted && rarity !== 'common') ? (RARITY_BONUS[rarity] || 0) : 0;
+    const totalPoints = basePoints + rarityBonus;
+
     // Player-formed words count toward both the total score and progression score
-    score += points;
-    progressScore += points;
+    score += totalPoints;
+    progressScore += totalPoints;
     scoreEl.textContent = score;
     if (hudScore) hudScore.textContent = score;
-    wordsMatched.unshift({ word: word.toUpperCase(), points });
+
+    // store richer metadata for the recent words UI
+    wordsMatched.unshift({ word: String(word||'').toUpperCase(), points: totalPoints, basePoints, rarity, hinted });
     if (wordsMatched.length > 12) wordsMatched.pop();
     refreshRecentWords();
+
     wordsCountEl.textContent = parseInt(wordsCountEl.textContent || '0') + 1; if (mobileWordsCount) mobileWordsCount.textContent = wordsCountEl.textContent;
+
     let cx = 0, cy = 0;
     for (const b of group){ if (!b) continue; cx += b.position.x; cy += b.position.y; spawnExplosion(b.position.x, b.position.y, 6, '#fff'); }
     cx /= group.length; cy /= group.length;
-    showFloatingStatus(`${word.toUpperCase()} +${points}`, cx, cy, { color: '#e6f6ff', size: 18, duration: 1200 });
 
-    // --- COMBO HANDLING: increment streak and apply combo bonus if applicable ---
+    // Show floating word + points only if this wasn't a hinted match
+    if (!hinted){
+      showFloatingStatus(`${String(word||'').toUpperCase()} +${totalPoints}`, cx, cy, { color: '#e6f6ff', size: 18, duration: 1200 });
+      // show separate floating rarity label (smaller and above) for rarer-than-common
+      if (rarity !== 'common'){
+        const color = RARITY_COLORS[rarity] || RARITY_COLORS.common;
+        showFloatingStatus(`${rarityLabel(rarity)} word!`, cx, cy - 30, { color, size: 14, duration: 1100 });
+      }
+    } else {
+      // For hinted words the spec asked to not show floating status for rarity.
+      // We still show the base word+points? The user requested no floating status at all for hinted words.
+      // Following that: do NOT show floating status for hinted words.
+    }
+
+        // Note: your existing handleComboOnMatch(false) expects whether hint used. We still call it with 'false'
+    // because we break combos earlier when a hint is requested. If you want the combo handler to consider
+    // the 'hinted' flag, update handleComboOnMatch to accept that parameter.
     handleComboOnMatch(false);
 
     for (const b of group){ b.isRemoved = true; clearEdgesForBody(b); }
+
     checkLevelProgress();
+
     const start = performance.now();
     const dur = CONFIG.fadeDuration;
     function tick(){
@@ -967,13 +1182,15 @@ function fadeAndRemoveBodies(bodies, word){
         lettersCountEl.textContent = lettersOnScreen; if (mobileLettersCount) mobileLettersCount.textContent = lettersOnScreen;
         resolve();
         return;
-      } else { for (const b of group) b.__fadeAlpha = 1 - t; requestAnimationFrame(tick); }
+      } else {
+        for (const b of group) b.__fadeAlpha = 1 - t;
+        requestAnimationFrame(tick);
+      }
     }
     requestAnimationFrame(tick);
   });
 }
 
-/* ---------------------- COMBO SYSTEM ---------------------- */
 let comboStreak = 0; // consecutive word matches without hint
 let comboExpiresAt = 0; // timestamp in ms when combo expires
 let comboTimerIv = null;
@@ -1071,7 +1288,6 @@ function breakComboDueToHint(){
   resetCombo('hint');
 }
 
-/* ---------------------- LEVEL / PROGRESSION ---------------------- */
 function computeScoreNeededForLevel(lv){
   const n = Math.max(0, lv - 1);
   const a = CONFIG.levelScoreIncrement;
@@ -1159,7 +1375,6 @@ function removeLettersForLevelUp(bodies, pts){
   requestAnimationFrame(tick);
 }
 
-/* ---------------------- GAMEOVER CHECK & HINT SYSTEM ---------------------- */
 async function findConnectedWordHint(){
   const bodies = getLetterBodies();
   const visited = new Set();
@@ -1276,7 +1491,6 @@ async function hasAnyPlayableWord(){
   return !!candidate;
 }
 
-/* ---------------------- GAMEOVER CHECK ---------------------- */
 // old condition: letter fell off top
 function checkGameOverCondition(){
   const bodies = getLetterBodies();
@@ -1306,7 +1520,6 @@ function startAsyncGameChecks(){
 }
 function stopAsyncGameChecks(){ if (asyncGameCheckIv) clearInterval(asyncGameCheckIv); asyncGameCheckIv = null; }
 
-/* ---------------------- UI helpers ---------------------- */
 function refreshRecentWords(){
   recentWordsEl.innerHTML = '';
   if (!wordsMatched.length){
@@ -1315,20 +1528,41 @@ function refreshRecentWords(){
   for (const w of wordsMatched){
     const p = document.createElement('p');
     p.style.margin = '6px 0';
+    p.style.lineHeight = '1.2';
+
     const strong = document.createElement('strong');
     strong.style.color = '#e6f6ff';
     strong.textContent = w.word;
     p.appendChild(strong);
+
+    // If this match was hinted, we intentionally do NOT show the rarity tag (per spec)
+    // ---- replace the old inline-style tag creation with this ----
+    if (!w.hinted && w.rarity && w.rarity !== 'common') {
+      // Create a modern pill-style rarity tag
+      const tag = document.createElement('span');
+      // class: 'rarity-tag' + ' rarity-<bucket>'
+      tag.className = `rarity-tag rarity-${w.rarity}`;
+      // readable label, uppercase
+      tag.textContent = rarityLabel(w.rarity);
+
+      // Optionally add a small tooltip and aria label
+      tag.setAttribute('title', `${rarityLabel(w.rarity)} word`);
+      tag.setAttribute('aria-hidden', 'true');
+
+      p.appendChild(tag);
+    }
+
+
     const span = document.createElement('span');
     span.style.color = 'var(--muted)';
     span.style.marginLeft = '8px';
     span.textContent = `+${w.points}`;
     p.appendChild(span);
+
     recentWordsEl.appendChild(p);
   }
 }
 
-/* ---------------------- GAME CONTROL ---------------------- */
 function startGame(){
   if (!engine) initMatter();
   resetWorldForNewGame();
@@ -1439,7 +1673,7 @@ function mobileInit(){
     updateConnectToggleUI();
     // tweak the instructions text for mobile
     const note = document.getElementById('controlsNote');
-    if (note) note.innerHTML = 'Touch & drag to connect letters (or long-press a letter then slide). Drag without holding to reposition.';
+    if (note) note.innerHTML = 'Hold & drag to connect the letters. Release to submit the sequence as a word.';
 
     // show one-time overlay hint (store in localStorage)
     try {
@@ -1520,5 +1754,190 @@ mobileOverlay.addEventListener('click', ()=>{
 function init(){ initMatter(); scoreEl.textContent = '0'; timerEl.textContent = '00:00'; lettersCountEl.textContent = '0'; wordsCountEl.textContent = '0'; wordsMatched = []; refreshRecentWords(); level = 1; progressScore = 0; updateLevelUI(); resetCombo('init'); mobileInit(); updateConnectToggleUI(); }
 init();
 </script>
+
+<script>
+  async function initRarityFromJSON(path = './rarity_map.json'){
+  try{
+  const resp = await fetch(path, { cache: 'no-cache' });
+  if (!resp.ok) throw new Error('fetch failed: ' + resp.status);
+  const j = await resp.json();
+  if (!j || !j.map) throw new Error('invalid json');
+  // Accept either nested map or a compact map where missing words are common
+  rarityMap = j.map || j;
+  rarityThresholds = j.thresholds || rarityThresholds || {};
+  trySaveToStorage(rarityMap);
+  console.log('Rarity: loaded from JSON (', path, ') entries:', Object.keys(rarityMap).length);
+  return true;
+  } catch (e){
+  console.warn('initRarityFromJSON failed:', e);
+  return false;
+  }
+  }
+
+  async function initRarityPreferJSON(){
+  // JSON-only behavior enforced: try cache, then try JSON from server. No fallback to wordlist.
+  if (tryLoadFromStorage()) return true;
+  const ok = await initRarityFromJSON('./rarity_map.json');
+  return !!ok;
+}
+
+function buildRarityFromWordlistNgramsSync(words, n = 3){
+  const ngramCounts = Object.create(null);
+  const add = ng => ngramCounts[ng] = (ngramCounts[ng] || 0) + 1;
+  for (const w of words){
+    const padded = ` ${w} `;
+    for (let i = 0; i <= padded.length - n; i++) add(padded.slice(i, i + n));
+  }
+  const rarityScores = new Array(words.length);
+  for (let i = 0; i < words.length; i++){
+    const w = words[i];
+    const padded = ` ${w} `;
+    let sum = 0, count = 0;
+    for (let j = 0; j <= padded.length - n; j++){
+      const ng = padded.slice(j, j + n);
+      sum += (ngramCounts[ng] || 0);
+      count++;
+    }
+    const avg = (count ? sum / count : 0);
+    const score = 1 / (avg + 1e-9);
+    rarityScores[i] = score;
+  }
+  // compute thresholds
+  const sortedScores = rarityScores.slice().sort((a,b)=>a-b);
+  rarityThresholds.uncommon = quantile(sortedScores, RARITY_PERCENTILES.uncommon);
+  rarityThresholds.rare     = quantile(sortedScores, RARITY_PERCENTILES.rare);
+  rarityThresholds.epic     = quantile(sortedScores, RARITY_PERCENTILES.epic);
+  rarityThresholds.legendary= quantile(sortedScores, RARITY_PERCENTILES.legendary);
+
+  // assign to map
+  const map = Object.create(null);
+  for (let i = 0; i < words.length; i++){
+    const w = words[i];
+    const s = rarityScores[i];
+    let bucket = 'common';
+    if (s >= rarityThresholds.legendary) bucket = 'legendary';
+    else if (s >= rarityThresholds.epic) bucket = 'epic';
+    else if (s >= rarityThresholds.rare) bucket = 'rare';
+    else if (s >= rarityThresholds.uncommon) bucket = 'uncommon';
+    map[w] = { score: s, bucket };
+  }
+  return map;
+}
+
+function bytesForString(str){ return new Blob([str]).size; }
+
+function tryLoadFromStorage(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.mapVersion) return false;
+    jsonRarityMap = parsed.jsonMap || null;
+    jsonRarityMap = parsed.genMap || null;
+    rarityThresholds = parsed.thresholds || {};
+    console.log('Rarity: loaded from cache (jsonMap entries:', jsonRarityMap ? Object.keys(jsonRarityMap).length : 0, ', genMap entries:', jsonRarityMap ? Object.keys(jsonRarityMap).length : 0, ')');
+    return true;
+  } catch(e){ console.warn('Rarity cache load failed', e); return false; }
+}
+
+function trySaveToStorage(){
+  try{
+    const payload = { mapVersion: 1, jsonMap: jsonRarityMap || null, genMap: jsonRarityMap || null, thresholds: rarityThresholds };
+    const s = JSON.stringify(payload);
+    if (bytesForString(s) > MAX_LOCALSTORAGE_BYTES){ console.warn('Rarity map too large to cache (~' + bytesForString(s) + ' bytes)'); return false; }
+    localStorage.setItem(STORAGE_KEY, s);
+    console.log('Rarity: cached to localStorage');
+    return true;
+  } catch(e){ console.warn('Rarity cache save failed', e); return false; }
+}
+
+async function initRarityFromJSON(path = './rarity_map.json'){
+  try{
+    const resp = await fetch(path, { cache: 'no-cache' });
+    if (!resp.ok) throw new Error('fetch failed: ' + resp.status);
+    const j = await resp.json();
+    if (!j) throw new Error('invalid json');
+    // Accept either object { map: {...}, thresholds: {...} } or plain map
+    jsonRarityMap = j.map || j || null;
+    if (!jsonRarityMap) throw new Error('json contains no map');
+    rarityThresholds = j.thresholds || rarityThresholds || {};
+    trySaveToStorage();
+    console.log('Rarity: loaded from JSON (', path, ') entries:', Object.keys(jsonRarityMap).length);
+    return true;
+  } catch (e){
+    console.warn('initRarityFromJSON failed:', e);
+    return false;
+  }
+}
+
+async function initRarityFromWordlist(path = './wordlist.txt'){
+  try{
+    const resp = await fetch(path);
+    if (!resp.ok) throw new Error('fetch failed');
+    const txt = await resp.text();
+    const words = txt.split(/\r?\n/).map(w=>w.trim().toLowerCase()).filter(Boolean);
+    if (!words.length) throw new Error('empty wordlist');
+
+    if (words.length > 200000) console.warn('Large wordlist detected (' + words.length + ' words) — building rarity map may take a few seconds in the browser.');
+    const map = buildRarityFromWordlistNgramsSync(words, 3);
+    // store generated map
+    jsonRarityMap = Object.create(null);
+    for (const w of words){ const entry = map[w]; if (!entry) continue; jsonRarityMap[w] = entry; }
+    trySaveToStorage();
+    console.log('Rarity: built from wordlist (n-gram proxy) entries:', Object.keys(jsonRarityMap).length);
+    return true;
+  } catch(e){
+    console.warn('initRarityFromWordlist failed:', e);
+    return false;
+  }
+}
+
+async function initRarityPreferJSON(){
+  // JSON-only behavior enforced: try cache, then try JSON from server. No fallback to wordlist.
+  if (tryLoadFromStorage()) return true;
+  const ok = await initRarityFromJSON('./rarity_map.json');
+  return !!ok;
+}
+
+function computeRarity(word){
+  if (!word) return 'common';
+  const w = String(word).toLowerCase();
+  // 1) Prefer json-provided rarity if present
+  if (jsonRarityMap && jsonRarityMap[w]){
+    return jsonRarityMap[w].bucket || (jsonRarityMap[w].bucket === undefined ? jsonRarityMap[w] : 'common');
+  }
+  // 2) Fall back to generated map
+  if (jsonRarityMap && jsonRarityMap[w]) return jsonRarityMap[w].bucket;
+  // 3) Fallback heuristics
+  if (w.length <= 3) return 'common';
+  if (w.length === 4) return 'uncommon';
+  if (w.length === 5) return 'rare';
+  if (w.length === 6) return 'epic';
+  return 'legendary';
+}
+
+(function(){
+  if (!window.__rarityInitStarted){
+    window.__rarityInitStarted = true;
+    setTimeout(()=>{
+      initRarityPreferJSON().then(ok=>{ if (!ok) console.log('Rarity: using fallback heuristics'); });
+    }, 120);
+  }
+})();
+
+window.__gameRarity = window.__gameRarity || {};
+Object.assign(window.__gameRarity, {
+  getJsonMap: ()=>jsonRarityMap,
+  getGenMap: ()=>jsonRarityMap,
+  getThresholds: ()=>rarityThresholds,
+  computeRarity,
+  reloadFromJSON: async (url = './rarity_map.json')=>{ const ok = await initRarityFromJSON(url); if (ok) console.log('Rarity map reloaded from', url); return ok; },
+  rebuildFromWordlist: async (url = './wordlist.txt')=>{ const ok = await initRarityFromWordlist(url); if (ok) console.log('Generated rarity rebuilt from', url); return ok; }
+});
+
+// Also keep a convenience alias used by other parts of the game
+window.computeRarity = computeRarity;
+</script>
+<!-- END RARITY MODULE -->
 </body>
 </html>
