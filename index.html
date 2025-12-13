@@ -50,9 +50,33 @@
   /* Combo UI - positioned below the play area and non-interactive so it won't block canvas */
   .combo-wrap{ margin-top:12px; width:100%; pointer-events:none; }
   .combo-row{ display:flex; align-items:center; gap:8px; }
-  .combo-text{ font-weight:700; color:#ffd27a; font-size:13px; width:110px; pointer-events:none; }
-  .combo-bar{ flex:1; height:10px; background:rgba(255,255,255,0.03); border-radius:8px; overflow:hidden; }
-  .combo-bar-inner{ height:100%; width:0%; background:linear-gradient(90deg,#ffd27a,#ffb86b); transition:width 120ms linear; pointer-events:none; }
+  .combo-text{ font-weight:700; color:rgba(255,255,255,0.45); font-size:13px; width:110px; pointer-events:none; transition: color 320ms ease, text-shadow 320ms ease; }
+  .combo-bar{ flex:1; height:10px; background:rgba(255,255,255,0.03); border-radius:8px; overflow:hidden; transition: box-shadow 320ms ease; }
+  .combo-bar-inner{ height:100%; width:0%; background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04)); transition: width 160ms linear, background 420ms ease, box-shadow 420ms ease; border-radius:8px; }
+
+  /* Combo color stages (apply on .combo-wrap as class: combo-stage-gray/white/orange/red/purple) */
+  .combo-stage-gray .combo-text { color: rgba(255,255,255,0.45); text-shadow: none; }
+  .combo-stage-white .combo-text { color: #ffffff; text-shadow: 0 0 6px rgba(255,255,255,0.06); }
+  .combo-stage-yellow .combo-text { color: #ffd27a; text-shadow: 0 0 10px rgba(255,210,122,0.10); }
+  .combo-stage-orange .combo-text { color: #ffb86b; text-shadow: 0 0 10px rgba(255,160,60,0.12); }
+  .combo-stage-red .combo-text { color: #ff6b6b; text-shadow: 0 0 12px rgba(255,90,90,0.14); }
+  .combo-stage-purple .combo-text { color: #b388ff; text-shadow: 0 0 14px rgba(180,130,255,0.16); }
+  .combo-stage-pink .combo-text { color: #ffb6d9; text-shadow: 0 0 12px rgba(255,150,200,0.12); }
+
+  .combo-stage-gray .combo-bar-inner { background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03)); box-shadow: none; }
+  .combo-stage-white .combo-bar-inner { background: linear-gradient(90deg,#ffffff,#e6f6ff); box-shadow: 0 6px 18px rgba(255,255,255,0.04), inset 0 -4px 10px rgba(255,255,255,0.02); }
+  .combo-stage-yellow .combo-bar-inner { background: linear-gradient(90deg,#ffd27a,#ffd86b); box-shadow: 0 8px 30px rgba(255,180,60,0.12), inset 0 -6px 18px rgba(255,220,140,0.06); }
+  .combo-stage-pink .combo-bar-inner { background: linear-gradient(90deg,#ff9acb,#ff66aa); box-shadow: 0 8px 30px rgba(255,102,170,0.14), inset 0 -6px 18px rgba(255,160,200,0.06); }
+  .combo-stage-orange .combo-bar-inner { background: linear-gradient(90deg,#ffa23e,#ff8a00); box-shadow: 0 8px 30px rgba(255,138,0,0.14), inset 0 -6px 18px rgba(255,180,100,0.08); }
+  .combo-stage-red .combo-bar-inner { background: linear-gradient(90deg,#ff8a6b,#ff3b3b); box-shadow: 0 8px 30px rgba(255,60,60,0.16), inset 0 -6px 18px rgba(255,110,110,0.09); }
+  .combo-stage-purple .combo-bar-inner { background: linear-gradient(90deg,#caa2ff,#8b5cf6); box-shadow: 0 8px 30px rgba(139,92,246,0.14), inset 0 -6px 18px rgba(190,150,255,0.08); }
+
+  /* small warning pulse when timer lower than 5s */
+  .combo-warning .combo-bar-inner { animation: combo-warning-pulse 900ms infinite alternate; box-shadow: 0 0 20px rgba(255,200,60,0.95); }
+  @keyframes combo-warning-pulse { from { transform: translateY(0); } to { transform: translateY(-1px) scale(1.01); } }
+
+  /* ensure smooth color transitions */
+  .combo-wrap { transition: color 320ms ease, box-shadow 320ms ease, filter 320ms ease; }
 
   /* -----------------------------
    Modern rarity tag styles
@@ -223,7 +247,7 @@ body::-webkit-scrollbar {
     html, body { overflow-x: hidden; }
 
     .game-shell{ grid-template-columns:1fr; gap:12px; padding:12px; width:100%; max-width:100vw; }
-    .right{ width:88vw; max-width:420px; position:fixed; right:12px; top:88px; bottom:12px; transform:translateY(20px) translateX(120%); transition:transform .28s cubic-bezier(.2,.9,.2,1); z-index:9998; box-shadow:0 20px 60px rgba(2,6,23,0.8); display:block; }
+    .right{ width:88vw; max-width:320px; position:fixed; right:12px; top:88px; bottom:12px; transform:translateY(20px) translateX(120%); transition:transform .28s cubic-bezier(.2,.9,.2,1); z-index:9998; box-shadow:0 20px 60px rgba(2,6,23,0.8); display:block; }
     .right.open{ transform: translateX(0) translateY(0); }
     /* overlay that will dim when panel open */
     .mobile-overlay{ position:fixed; left:0; right:0; top:0; bottom:0; background:rgba(0,0,0,0.36); z-index:9997; display:none; }
@@ -295,25 +319,21 @@ body::-webkit-scrollbar {
       color: #7dd3fc;
       background: linear-gradient(90deg, rgba(125,211,252,0.12), rgba(96,165,250,0.08));
       border: 1px solid rgba(125,211,252,0.12);
-      box-shadow: 0 6px 18px rgba(125,211,252,0.06);
     }
     .word-pill.rarity-rare {
       color: #a78bfa;
       background: linear-gradient(90deg, rgba(167,139,250,0.24), rgba(124,58,237,0.06));
       border: 1px solid rgba(167,139,250,0.12);
-      box-shadow: 0 6px 18px rgba(167,139,250,0.06);
     }
     .word-pill.rarity-epic {
       color: #ffd27a;
       background: linear-gradient(90deg, rgba(255,210,122,0.36), rgba(255,184,107,0.06));
       border: 1px solid rgba(255,210,122,0.12);
-      box-shadow: 0 6px 18px rgba(255,210,122,0.06);
     }
     .word-pill.rarity-legendary {
       color: #ff6b6b;
       background: linear-gradient(90deg, rgba(255,107,107,0.36), rgba(255,80,80,0.06));
       border: 1px solid rgba(255,107,107,0.12);
-      box-shadow: 0 6px 18px rgba(255,107,107,0.06);
     }
 
     /* keep muted pills readable */
@@ -324,14 +344,6 @@ body::-webkit-scrollbar {
       box-shadow: none;
     }
 
-    /* small polish for touch */
-    .word-pill {
-      transition: transform 140ms ease, box-shadow 160ms ease, opacity 120ms;
-      -webkit-font-smoothing: antialiased;
-    }
-    .word-pill:active { transform: translateY(1px) scale(0.995); }
-
-    
     /* Floating HUD hidden when mobile-ui is shown */
     #floatingHud{ display:none !important; }
 
@@ -392,7 +404,7 @@ body::-webkit-scrollbar {
       </div>
 
       <!-- combo bar placed below the play-wrap (non-interactive so it won't block gameplay) -->
-      <div class="combo-wrap" id="comboWrap" style="display:none;" aria-hidden="true">
+      <div class="combo-wrap combo-stage-gray" id="comboWrap" aria-hidden="false">
         <div class="combo-row">
           <div class="combo-text" id="comboText">Combo x0</div>
           <div class="combo-bar" aria-hidden="true"><div id="comboBarInner" class="combo-bar-inner"></div></div>
@@ -489,9 +501,9 @@ const CONFIG = {
   hintSearchMillisPerMode: 300, // ms per search pass
   hintHighlightMs: 4200,
   // COMBO config
-  comboStartThreshold: 3, // matches required to start giving combo bonus
-  comboBonuses: [0,0,0,10,20,30,40], // index by streak count (0..6), 7+ -> 50
-  comboMaxBonusFrom7: 50,
+  comboStartThreshold: 1, // matches required to start giving combo bonus
+  comboBonuses: [ 0,0,0,10,20,30,40,50,50,50 ], // index by streak count (0..6), 7+ -> 50
+  comboMaxBonusFrom10: 75,
   comboDurationAt3: 30, // seconds at 3rd
   comboDurationDecreasePerLevel: 5, // each level up
   comboDurationMin: 10, // minimum seconds from 7th
@@ -677,6 +689,8 @@ const levelBarInnerEl = document.getElementById('levelBarInner');
 const comboWrap = document.getElementById('comboWrap');
 const comboTextEl = document.getElementById('comboText');
 const comboBarInnerEl = document.getElementById('comboBarInner');
+comboTextEl.textContent = 'Combo';
+comboWrap.classList.add('combo-stage-gray');
 
 const rightPanel = document.getElementById('rightPanel');
 const sidebarToggle = document.getElementById('sidebarToggle');
@@ -1455,7 +1469,7 @@ let comboTimerIv = null;
 function getComboBonusForStreak(n){
   if (n < CONFIG.comboStartThreshold) return 0;
   if (n < CONFIG.comboBonuses.length) return CONFIG.comboBonuses[n];
-  return CONFIG.comboMaxBonusFrom7;
+  return CONFIG.comboMaxBonusFrom10;
 }
 function getComboDurationForStreak(n){
   if (n < CONFIG.comboStartThreshold) return 0;
@@ -1478,17 +1492,118 @@ function startComboTimer(){
 }
 function stopComboTimer(){ if (comboTimerIv) { clearInterval(comboTimerIv); comboTimerIv = null; } }
 
+// ---------- Paste-replace: updateComboBar ----------
 function updateComboBar(){
-  if (!comboExpiresAt){ comboWrap.style.display = 'none'; comboBarInnerEl.style.width = '0%'; comboTextEl.textContent = 'Combo x0'; return; }
-  const remaining = Math.max(0, comboExpiresAt - performance.now());
-  const dur = getComboDurationForStreak(comboStreak) * 1000;
-  if (dur <= 0){ comboWrap.style.display = 'none'; comboBarInnerEl.style.width = '0%'; return; }
-  const pct = clamp((remaining / dur) * 100, 0, 100);
-  comboWrap.style.display = 'block';
-  comboBarInnerEl.style.width = `${pct}%`;
-  comboTextEl.textContent = `Combo x${comboStreak}`;
-}
+  // Defensive coercion of the streak value so "1", 1, null, undefined all behave.
+  const streak = Number(comboStreak) || 0;
 
+  const now = performance.now();
+  const hasTimer = !!comboExpiresAt;
+  const remaining = Math.max(0, (comboExpiresAt || 0) - now);
+  const dur = (typeof getComboDurationForStreak === 'function') ? (getComboDurationForStreak(streak) * 1000) : 0;
+
+  // Visual stage decision (keeps earlier mapping)
+  let stage = 'gray';
+  if (streak >= 10) stage = 'pink';
+  else if (streak >= 7) stage = 'red';
+  else if (streak >= 5) stage = 'orange';
+  else if (streak >= 3) stage = 'yellow';
+  else if (streak >= 1) stage = 'white';
+// update stage classes on comboWrap
+  comboWrap.classList.remove('combo-stage-gray','combo-stage-white','combo-stage-yellow','combo-stage-orange','combo-stage-red','combo-stage-pink','combo-stage-purple');
+  comboWrap.classList.add('combo-stage-' + stage);
+
+  // TEXT & BAR: show "Combo" when 0, otherwise "Combo xN" starting at x1
+  if (streak <= 0){
+    comboTextEl.textContent = 'Combo';
+    comboBarInnerEl.style.width = '0%';
+  } else {
+    comboTextEl.textContent = `Combo x${streak}`;
+
+    if (hasTimer && dur > 0){
+      const pct = clamp((remaining / dur) * 100, 0, 100);
+      comboBarInnerEl.style.width = `${pct}%`;
+    } else {
+      // for early combos (1-2) we show full bar visually
+      comboBarInnerEl.style.width = '100%';
+    }
+  }
+
+  // Warning glow when timer < 5s (only when timer exists and streak reached threshold)
+  const warn = hasTimer && (remaining / 1000) <= 5 && streak >= (CONFIG && CONFIG.comboStartThreshold ? CONFIG.comboStartThreshold : 3);
+  comboWrap.classList.toggle('combo-warning', !!warn);
+
+  
+  
+  // ------------------- Particle spawning (combo-bar focused) -------------------
+  // Tunables: change these to adjust particle count / intensity
+  const PARTICLE_MIN = 3;       // minimum particles per tick when stage active (base)
+  const PARTICLE_MAX = 400;     // hard cap (safety)
+  const PARTICLE_SCALE = 1.6;   // larger -> more particles for same streak
+  const PARTICLE_LIFE_BOOST = 1.0; // global life multiplier
+
+  // Only spawn particles for visible combo stages beyond gray/white
+  if (['yellow','orange','red','pink','purple'].includes(stage)){
+    // color mapping per stage
+    let color = '#a78bfa'; // fallback (purple-like)
+    if (stage === 'yellow') color = '#ffd27a';
+    else if (stage === 'orange') color = '#ff8a00';
+    else if (stage === 'red') color = '#ff3b3b';
+    else if (stage === 'pink') color = '#ff66aa';
+    else if (stage === 'purple') color = '#b388ff';
+
+    // intensity base: grows with streak, clamped to PARTICLE_MAX
+    let intensity = Math.min(Math.floor(streak * PARTICLE_SCALE * 4), PARTICLE_MAX);
+
+    // Stage overrides: make pink most aggressive, then red, orange, yellow
+    let stageMultiplier = 1;
+    if (stage === 'yellow') stageMultiplier = 0.9;
+    else if (stage === 'orange') stageMultiplier = 1.1;
+    else if (stage === 'purple') stageMultiplier = 1.2;
+    else if (stage === 'red') stageMultiplier = 1.6;
+    else if (stage === 'pink') stageMultiplier = 2.4; // very aggressive
+
+    intensity = Math.min(Math.floor(intensity * stageMultiplier), PARTICLE_MAX);
+
+    // derive spawn count per tick from intensity (scaled and smoothed)
+    const toSpawn = Math.max(PARTICLE_MIN, Math.min(PARTICLE_MAX, Math.floor(intensity / 10)));
+
+    // spawn particles around the combo bar center/top.
+    // Convert DOM bounding rect coordinates to canvas coordinates (important for correct placement).
+    let comboBarRect = null;
+    try { comboBarRect = comboWrap.getBoundingClientRect(); } catch(e) { comboBarRect = null; }
+
+    if (comboBarRect && canvas && canvas.getBoundingClientRect){
+      const canvasRect = canvas.getBoundingClientRect();
+      const scaleX = (canvas.width && canvasRect.width) ? (canvas.width / canvasRect.width) : 1;
+      const scaleY = (canvas.height && canvasRect.height) ? (canvas.height / canvasRect.height) : scaleX || 1;
+
+      const domCenterX = comboBarRect.left + comboBarRect.width/2;
+      const domTopY = comboBarRect.top + 8; // small offset within the bar
+      // convert to canvas coordinates
+      const centerX_canvas = (domCenterX - canvasRect.left) * scaleX;
+      const topY_canvas = (domTopY - canvasRect.top) * scaleY;
+
+      // spawn particles in canvas coords
+      for (let i = 0; i < toSpawn; i++){
+        const spread = 20 + Math.min(120, intensity/4);
+        const bx = centerX_canvas + (Math.random() - 0.5) * spread;
+        const by = topY_canvas + (Math.random() - 0.5) * 28;
+        spawnParticle(bx, by, color);
+        if (stage === 'pink' && Math.random() < 0.6) spawnParticle(bx + (Math.random()-0.5)*8, by + (Math.random()-0.5)*8, color);
+      }
+    } else {
+      // fallback: approximate top-centre spawn if layout doesn't match expected ids
+      const approxX = (canvas && canvas.width) ? (canvas.width * 0.5) : 300;
+      for (let i = 0; i < toSpawn; i++){
+        const bx = approxX + (Math.random() - 0.5) * 140;
+        const by = 52 + Math.random() * 18;
+        spawnParticle(bx, by, color);
+        if (stage === 'pink' && Math.random() < 0.4) spawnParticle(bx + (Math.random()-0.5)*8, by + (Math.random()-0.5)*8, color);
+      }
+    }
+  }
+}
 function resetCombo(reason){
   comboStreak = 0;
   comboExpiresAt = 0;
