@@ -91,9 +91,9 @@
 
 /* per-rarity colors (background subtle, text uses the RARITY_COLORS) */
 .rarity-uncommon { color: #7dd3fc; background: linear-gradient(90deg, rgba(125,211,252,0.12), rgba(96,165,250,0.08)); border-color: rgba(125,211,252,0.12); }
-.rarity-rare     { color: #a78bfa; background: linear-gradient(90deg, rgba(167,139,250,0.12), rgba(124,58,237,0.06)); border-color: rgba(167,139,250,0.12); }
-.rarity-epic     { color: #ffd27a; background: linear-gradient(90deg, rgba(255,210,122,0.12), rgba(255,184,107,0.06)); border-color: rgba(255,210,122,0.12); }
-.rarity-legendary{ color: #ff6b6b; background: linear-gradient(90deg, rgba(255,107,107,0.12), rgba(255,80,80,0.06)); border-color: rgba(255,107,107,0.12); }
+.rarity-rare     { color: #a78bfa; background: linear-gradient(90deg, rgba(167,139,250,0.24), rgba(124,58,237,0.06)); border-color: rgba(167,139,250,0.12); }
+.rarity-epic     { color: #ffd27a; background: linear-gradient(90deg, rgba(255,210,122,0.36), rgba(255,184,107,0.06)); border-color: rgba(255,210,122,0.12); }
+.rarity-legendary{ color: #ff6b6b; background: linear-gradient(90deg, rgba(255,107,107,0.36), rgba(255,80,80,0.06)); border-color: rgba(255,107,107,0.12); }
 
 /* dot color follows text color for visual consistency */
 .rarity-uncommon::before  { background: #7dd3fc; box-shadow: 0 6px 18px rgba(125,211,252,0.12); }
@@ -244,6 +244,16 @@ body::-webkit-scrollbar {
 
     /* Mobile-specific UI container */
     .mobile-ui{ display:block; width:100%; margin-bottom:10px; min-width: 0; }
+    .mobile-ui,
+    .mobile-ui * {
+      -webkit-user-select: none;  /* Safari/Chrome on iOS/Android */
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;     /* iOS long-press callout */
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;      /* allow normal taps & scrolling gestures but avoid selection */
+    }
     .mobile-toprow{ display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; user-select: none;}
     .mobile-top-card{ background:linear-gradient(180deg, rgba(2,6,23,0.72), rgba(2,6,23,0.6)); padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); display:flex; gap:8px; align-items:center; min-width:60px; }
     .mobile-top-left{ display:flex; gap:8px; align-items:center; }
@@ -271,7 +281,48 @@ body::-webkit-scrollbar {
       scrollbar-width: thin;       /* Firefox */
     }
     .word-pill{background:var(--glass);padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px;border:1px solid rgba(255,255,255,0.02);flex: 0 0 auto; display: inline-block; white-space: nowrap; max-width: 80vw; overflow: hidden; text-overflow: ellipsis;}
+    /* Mobile: make word-pill reflect rarity colors (paste into your <style>, inside the mobile media query) */
+    .word-pill.rarity-uncommon {
+      color: #7dd3fc;
+      background: linear-gradient(90deg, rgba(125,211,252,0.12), rgba(96,165,250,0.08));
+      border: 1px solid rgba(125,211,252,0.12);
+      box-shadow: 0 6px 18px rgba(125,211,252,0.06);
+    }
+    .word-pill.rarity-rare {
+      color: #a78bfa;
+      background: linear-gradient(90deg, rgba(167,139,250,0.24), rgba(124,58,237,0.06));
+      border: 1px solid rgba(167,139,250,0.12);
+      box-shadow: 0 6px 18px rgba(167,139,250,0.06);
+    }
+    .word-pill.rarity-epic {
+      color: #ffd27a;
+      background: linear-gradient(90deg, rgba(255,210,122,0.36), rgba(255,184,107,0.06));
+      border: 1px solid rgba(255,210,122,0.12);
+      box-shadow: 0 6px 18px rgba(255,210,122,0.06);
+    }
+    .word-pill.rarity-legendary {
+      color: #ff6b6b;
+      background: linear-gradient(90deg, rgba(255,107,107,0.36), rgba(255,80,80,0.06));
+      border: 1px solid rgba(255,107,107,0.12);
+      box-shadow: 0 6px 18px rgba(255,107,107,0.06);
+    }
 
+    /* keep muted pills readable */
+    .word-pill.muted {
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.02);
+      box-shadow: none;
+    }
+
+    /* small polish for touch */
+    .word-pill {
+      transition: transform 140ms ease, box-shadow 160ms ease, opacity 120ms;
+      -webkit-font-smoothing: antialiased;
+    }
+    .word-pill:active { transform: translateY(1px) scale(0.995); }
+
+    
     /* Floating HUD hidden when mobile-ui is shown */
     #floatingHud{ display:none !important; }
 
@@ -791,6 +842,53 @@ function initMatter(){
   Matter.Events.on(engine, 'collisionStart', handleCollisions);
   Matter.Events.on(engine, 'collisionActive', handleCollisions);
   Matter.Events.on(engine, 'collisionEnd', handleCollisionEnd);
+  // --- safety: teleport letters that get thrown out of bounds back into the play area ---
+Matter.Events.on(engine, 'beforeUpdate', function(){
+  try {
+    const w = playWrap.clientWidth || (render && render.options.width) || 0;
+    const h = playWrap.clientHeight || (render && render.options.height) || 0;
+    if (!w || !h) return;
+
+    const bodies = getLetterBodies(); // uses existing helper that returns only letter bodies
+    for (const b of bodies){
+      if (!b || b.isRemoved) continue;
+      // don't interfere with the body currently being dragged by the user
+      if (dragging.body === b) continue;
+
+      const r = getBodyRadius(b);
+      // define "out of bounds" thresholds (generous so small overlaps won't trigger)
+      const tooLeft   = b.position.x < -r * 1.5;
+      const tooRight  = b.position.x > w + r * 1.5;
+      const tooTop    = b.position.y < -r * 1.5;
+      const tooBottom = b.position.y > h + r * 4; // allow some slack below bottom before teleporting
+
+      if (tooLeft || tooRight || tooTop || tooBottom){
+        // Choose a safe X inside the play area (keep near current X if reasonable)
+        const safeMinX = CONFIG.spawnHorizontalPadding + r;
+        const safeMaxX = Math.max(safeMinX, w - CONFIG.spawnHorizontalPadding - r);
+        let newX = clamp(Math.round(b.position.x), safeMinX, safeMaxX);
+        if (newX < safeMinX || newX > safeMaxX) newX = randInt(safeMinX, safeMaxX);
+
+        // Place it near the top so it 'falls' naturally
+        const newY = -r - 12;
+
+        // Teleport + reset rotation/velocities and let it fall
+        Matter.Body.setPosition(b, { x: newX, y: newY });
+        Matter.Body.setAngle(b, 0);
+        Matter.Body.setAngularVelocity(b, 0);
+        Matter.Body.setVelocity(b, { x: 0, y: 1 + Math.random() * 1.5 });
+        Matter.Body.setStatic(b, false);
+        Matter.Sleeping.set(b, false);
+
+        // Re-add to the world to help the engine resolve any stale contacts (safe no-op if already present)
+        try { Matter.World.remove(world, b); Matter.World.add(world, b); } catch (err) { /* ignore */ }
+      }
+    }
+  } catch (err) {
+    console.warn('bounds-check error', err);
+  }
+});
+
   window.addEventListener('resize', updateBoundaries);
 }
 
@@ -1639,14 +1737,6 @@ async function provideHint(){
 async function hasAnyPlayableWord(){
   const candidate = await findHintCandidate();
   return !!candidate;
-}
-
-// old condition: letter fell off top
-function checkGameOverCondition(){
-  const bodies = getLetterBodies();
-  for (const b of bodies){ const radius = (b.circleRadius || CONFIG.letterSize/2); if (b.position.y - radius < -5) return true; }
-  // synchronous check doesn't decide game over; async check will call endGame when needed
-  return false;
 }
 
 // We'll run periodic asynchronous checks (every 2s) to detect impossible boards
