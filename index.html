@@ -234,6 +234,16 @@ body::-webkit-scrollbar {
     .controls button{ flex:1 1 48%; min-width:120px; }
     button.btn{ padding:8px 12px; font-size:14px; border-radius:10px; }
     button.ghost{ padding:8px 12px; font-size:14px; border-radius:10px; }
+    button.btn,
+    button.ghost{
+      -webkit-user-select: none;  /* Safari/Chrome on iOS/Android */
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;     /* iOS long-press callout */
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation; 
+    }
     .muted{ font-size:14px; }
     .level-text{ font-size:13px; }
     .words-list{ max-height:180px; }
@@ -244,7 +254,6 @@ body::-webkit-scrollbar {
 
     /* Mobile-specific UI container */
     .mobile-ui{ display:block; width:100%; margin-bottom:10px; min-width: 0; }
-    .mobile-ui,
     .mobile-ui * {
       -webkit-user-select: none;  /* Safari/Chrome on iOS/Android */
       -moz-user-select: none;
